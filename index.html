@@ -2281,7 +2281,7 @@ injectVisibilityControls();
 
 
 
-/* ========== SUPABASE POC INTEGRATION ========== */
+/* ========== SUPABASE POC INTEGRATION 2========== */
 const SUPABASE_URL = 'https://xeoigqpfaqitzszwhvao.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhlb2lncXBmYXFpdHpzendodmFvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0MzQwNjIsImV4cCI6MjA5NzAxMDA2Mn0.DQyG28w8O6GxYoHPe7mEQKfibAtAjiQo__fH8yiw6z4';
 const SUPABASE_TABLE = 'tracker_items';
@@ -2298,13 +2298,13 @@ function mapFromSupabase(row) {
     status: row.status || 'Open',
     priority: row.priority || 'P2',
     visibility: row.visibility || 'External',
-    startDate: '',
-    endDate: '',
-    revenueLinked: 'No',
-    ticketRef: '',
-    remarks: '',
-    severity: 'Medium',
-    custom: {}
+    startDate: row.start_date || '',
+    endDate: row.end_date || '',
+    revenueLinked: row.revenue_linked || 'No',
+    ticketRef: row.ticket_ref || '',
+    remarks: row.remarks || '',
+    severity: row.severity || 'Medium',
+    custom: row.custom || {}
   };
 }
 
@@ -2316,7 +2316,14 @@ function mapToSupabase(data) {
     owner: data.owner || '',
     status: data.status || 'Open',
     priority: data.priority || 'P2',
-    visibility: data.visibility === 'Internal' ? 'Internal' : 'External'
+    visibility: data.visibility === 'Internal' ? 'Internal' : 'External',
+    start_date: data.startDate || null,
+    end_date: data.endDate || null,
+    revenue_linked: data.revenueLinked || 'No',
+    ticket_ref: data.ticketRef || '',
+    remarks: data.remarks || '',
+    severity: data.severity || 'Medium',
+    custom: data.custom || {}
   };
 }
 
@@ -2339,7 +2346,13 @@ async function loadItemsFromSupabase() {
 function populateDropdownsFromSupabaseItems() {
   const dd = getDropdowns();
   SUPABASE_ITEMS_CACHE.forEach(it => {
-    [['Platform', it.platform], ['Owner', it.owner], ['Status', it.status], ['Priority', it.priority]].forEach(([cat, val]) => {
+    [
+      ['Platform', it.platform],
+      ['Owner', it.owner],
+      ['Status', it.status],
+      ['Priority', it.priority],
+      ['Severity', it.severity]
+    ].forEach(([cat, val]) => {
       if (val && dd[cat] && !dd[cat].some(x => x.toLowerCase() === val.toLowerCase())) dd[cat].push(val);
     });
   });
@@ -2357,30 +2370,58 @@ showApp = function() {
   loadItemsFromSupabase();
 };
 
-const _supabasePreviousSaveItem = saveItem;
 saveItem = async function() {
   if (!canWrite()) { toast('External users have read-only access', 'error'); return; }
+
   const id = document.getElementById('itemId').value;
+
+  const custom = {};
+  document.querySelectorAll('.custom-field-input').forEach(el => {
+    custom[el.dataset.key] = el.value.trim();
+  });
+
   const data = {
     enhancement: document.getElementById('itemEnhancement').value.trim(),
     description: document.getElementById('itemDescription').value.trim(),
     platform: document.getElementById('itemPlatform').value,
     owner: document.getElementById('itemOwner').value,
+    startDate: document.getElementById('itemStartDate').value,
+    endDate: document.getElementById('itemEndDate').value,
     status: document.getElementById('itemStatus').value,
+    revenueLinked: document.getElementById('itemRevenue').value,
+    severity: document.getElementById('itemSeverity').value,
     priority: document.getElementById('itemPriority').value,
-    visibility: document.getElementById('itemVisibility')?.value || 'External'
+    ticketRef: document.getElementById('itemTicket').value.trim(),
+    remarks: document.getElementById('itemRemarks').value.trim(),
+    visibility: document.getElementById('itemVisibility')?.value || 'External',
+    custom
   };
+
   if (!data.enhancement) { toast('Enhancement title is required', 'error'); return; }
+  if (!data.startDate) { toast('Start date is required', 'error'); return; }
+  if (data.endDate && data.endDate < data.startDate) {
+    toast('End date cannot be before start date', 'error');
+    return;
+  }
+
   try {
     if (id) {
-      const { error } = await supabaseClient.from(SUPABASE_TABLE).update(mapToSupabase(data)).eq('id', Number(id));
+      const { error } = await supabaseClient
+        .from(SUPABASE_TABLE)
+        .update(mapToSupabase(data))
+        .eq('id', Number(id));
+
       if (error) throw error;
       toast('Enhancement updated in Supabase');
     } else {
-      const { error } = await supabaseClient.from(SUPABASE_TABLE).insert([mapToSupabase(data)]);
+      const { error } = await supabaseClient
+        .from(SUPABASE_TABLE)
+        .insert([mapToSupabase(data)]);
+
       if (error) throw error;
       toast('Enhancement added to Supabase');
     }
+
     closeModal('itemModal');
     await loadItemsFromSupabase();
   } catch (err) {
@@ -2391,10 +2432,16 @@ saveItem = async function() {
 
 deleteItem = function(id) {
   if (!canWrite()) { toast('External users have read-only access', 'error'); return; }
+
   openConfirm('Delete enhancement?', 'This will delete the record from Supabase.', async () => {
     try {
-      const { error } = await supabaseClient.from(SUPABASE_TABLE).delete().eq('id', Number(id));
+      const { error } = await supabaseClient
+        .from(SUPABASE_TABLE)
+        .delete()
+        .eq('id', Number(id));
+
       if (error) throw error;
+
       toast('Enhancement deleted from Supabase');
       await loadItemsFromSupabase();
     } catch (err) {
