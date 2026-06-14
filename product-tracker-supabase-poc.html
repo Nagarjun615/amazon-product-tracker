@@ -1,0 +1,2425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Pine Labs | Amazon Product Tracker</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --pl-green: #0b4d3e;
+    --pl-green-dark: #073529;
+    --pl-green-light: #145e4d;
+    --pl-accent: #d4a017;
+    --pl-bg: #f4f6f5;
+    --pl-card: #ffffff;
+    --pl-border: #e3e7e5;
+    --pl-text: #1a2e28;
+    --pl-text-muted: #5a6b66;
+    --pl-success: #1d7a4f;
+    --pl-warn: #c47900;
+    --pl-danger: #b3261e;
+    --pl-info: #2563eb;
+    --shadow-sm: 0 1px 2px rgba(7,53,41,0.06);
+    --shadow-md: 0 4px 12px rgba(7,53,41,0.08);
+    --shadow-lg: 0 10px 30px rgba(7,53,41,0.15);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; color: var(--pl-text); background: var(--pl-bg); }
+  button { font-family: inherit; cursor: pointer; }
+  input, select, textarea { font-family: inherit; }
+
+  /* ------------- LOGIN ------------- */
+  #loginScreen {
+    position: fixed; inset: 0;
+    background: linear-gradient(135deg, var(--pl-green-dark) 0%, var(--pl-green) 60%, var(--pl-green-light) 100%);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000;
+  }
+  .login-card {
+    width: 100%; max-width: 420px;
+    background: #fff; border-radius: 14px;
+    padding: 36px 32px;
+    box-shadow: var(--shadow-lg);
+  }
+  .login-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; }
+  .brand-mark {
+    width: 38px; height: 38px; border-radius: 9px;
+    background: var(--pl-green);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 700; font-size: 16px; letter-spacing: 0.5px;
+  }
+  .brand-text { font-weight: 700; font-size: 17px; color: var(--pl-green-dark); }
+  .brand-sub { font-size: 12px; color: var(--pl-text-muted); margin-top: 2px; }
+  .login-title { font-size: 20px; font-weight: 700; margin: 6px 0 4px; color: var(--pl-green-dark); }
+  .login-sub { font-size: 13px; color: var(--pl-text-muted); margin-bottom: 20px; }
+  .form-group { margin-bottom: 14px; }
+  .form-group label { display: block; font-size: 12px; font-weight: 600; color: var(--pl-text); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .form-group input, .form-group select, .form-group textarea {
+    width: 100%; padding: 10px 12px;
+    border: 1px solid var(--pl-border); border-radius: 8px;
+    font-size: 14px; background: #fff; color: var(--pl-text);
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+    outline: none; border-color: var(--pl-green);
+    box-shadow: 0 0 0 3px rgba(11,77,62,0.12);
+  }
+  .login-btn {
+    width: 100%; padding: 12px;
+    background: var(--pl-green); color: #fff;
+    border: none; border-radius: 8px;
+    font-weight: 600; font-size: 14px;
+    margin-top: 6px;
+    transition: background 0.15s;
+  }
+  .login-btn:hover { background: var(--pl-green-dark); }
+  .login-error { color: var(--pl-danger); font-size: 13px; margin-top: 10px; min-height: 18px; }
+  .login-hint {
+    margin-top: 18px; padding: 10px 12px;
+    background: #f4f9f7; border: 1px solid #cfe4dc;
+    border-radius: 8px; font-size: 11.5px; color: var(--pl-text-muted);
+    line-height: 1.5;
+  }
+  .login-hint b { color: var(--pl-green-dark); }
+
+  /* ------------- APP SHELL ------------- */
+  #app { display: none; min-height: 100vh; }
+  .topbar {
+    background: var(--pl-green-dark); color: #fff;
+    padding: 12px 24px;
+    display: flex; align-items: center; justify-content: space-between;
+    box-shadow: var(--shadow-sm);
+  }
+  .topbar-left { display: flex; align-items: center; gap: 14px; }
+  .topbar-left .brand-mark { background: var(--pl-accent); color: var(--pl-green-dark); }
+  .topbar-title { font-weight: 700; font-size: 15px; }
+  .topbar-title small { display: block; font-size: 11px; font-weight: 400; opacity: 0.75; }
+  .topbar-right { display: flex; align-items: center; gap: 12px; }
+  .user-chip {
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(255,255,255,0.08);
+    padding: 6px 12px; border-radius: 20px;
+    font-size: 13px;
+  }
+  .user-avatar {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--pl-accent); color: var(--pl-green-dark);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 12px;
+  }
+  .role-badge {
+    background: var(--pl-accent); color: var(--pl-green-dark);
+    padding: 2px 8px; border-radius: 10px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase;
+  }
+  .logout-btn {
+    background: transparent; color: #fff;
+    border: 1px solid rgba(255,255,255,0.3);
+    padding: 6px 12px; border-radius: 6px;
+    font-size: 12px; font-weight: 600;
+  }
+  .logout-btn:hover { background: rgba(255,255,255,0.1); }
+
+  /* ------------- KPI ROW ------------- */
+  .container { padding: 24px; max-width: 1600px; margin: 0 auto; }
+  .kpi-row {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px; margin-bottom: 20px;
+  }
+  .kpi-card {
+    background: var(--pl-card); padding: 16px 18px;
+    border-radius: 10px; border: 1px solid var(--pl-border);
+    box-shadow: var(--shadow-sm);
+  }
+  .kpi-label { font-size: 11px; text-transform: uppercase; color: var(--pl-text-muted); letter-spacing: 0.5px; font-weight: 600; }
+  .kpi-value { font-size: 26px; font-weight: 700; color: var(--pl-green-dark); margin-top: 4px; }
+  .kpi-sub { font-size: 11px; color: var(--pl-text-muted); margin-top: 2px; }
+  .kpi-card.accent-green { border-left: 3px solid var(--pl-success); }
+  .kpi-card.accent-warn { border-left: 3px solid var(--pl-warn); }
+  .kpi-card.accent-danger { border-left: 3px solid var(--pl-danger); }
+  .kpi-card.accent-info { border-left: 3px solid var(--pl-info); }
+
+  /* ------------- TOOLBAR ------------- */
+  .toolbar {
+    background: var(--pl-card); border: 1px solid var(--pl-border);
+    border-radius: 10px; padding: 14px 16px; margin-bottom: 16px;
+    box-shadow: var(--shadow-sm);
+  }
+  .toolbar-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .toolbar-row + .toolbar-row { margin-top: 10px; }
+  .filter-group { display: flex; flex-direction: column; gap: 4px; }
+  .filter-group label { font-size: 10.5px; font-weight: 600; color: var(--pl-text-muted); text-transform: uppercase; letter-spacing: 0.4px; }
+  .filter-group select, .filter-group input {
+    padding: 7px 10px; border: 1px solid var(--pl-border); border-radius: 6px;
+    font-size: 13px; min-width: 130px; background: #fff;
+  }
+  .search-box { flex: 1 1 240px; min-width: 220px; }
+  .search-box input { width: 100%; padding-left: 32px; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' fill='%235a6b66' viewBox='0 0 16 16'><path d='M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0'/></svg>"); background-repeat: no-repeat; background-position: 10px center; }
+
+  .btn {
+    padding: 8px 14px; border-radius: 6px; border: 1px solid transparent;
+    font-size: 13px; font-weight: 600; transition: all 0.15s;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn-primary { background: var(--pl-green); color: #fff; }
+  .btn-primary:hover { background: var(--pl-green-dark); }
+  .btn-secondary { background: #fff; color: var(--pl-green-dark); border-color: var(--pl-border); }
+  .btn-secondary:hover { background: var(--pl-bg); }
+  .btn-danger { background: #fff; color: var(--pl-danger); border-color: #f1c5c2; }
+  .btn-danger:hover { background: #fdf2f1; }
+  .btn-sm { padding: 5px 10px; font-size: 12px; }
+  .btn-icon { padding: 6px 8px; }
+
+  /* ------------- TABLE ------------- */
+  .table-wrap {
+    background: var(--pl-card); border: 1px solid var(--pl-border);
+    border-radius: 10px; overflow: hidden;
+    box-shadow: var(--shadow-sm);
+  }
+  .table-scroll { overflow-x: auto; }
+  table.tracker { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 1500px; }
+  table.tracker thead th {
+    background: #f7faf9; color: var(--pl-green-dark);
+    font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.4px;
+    padding: 11px 10px; text-align: left;
+    border-bottom: 2px solid var(--pl-border);
+    white-space: nowrap; position: sticky; top: 0; z-index: 1;
+  }
+  table.tracker tbody td {
+    padding: 10px; border-bottom: 1px solid var(--pl-border);
+    vertical-align: top;
+  }
+  table.tracker tbody tr:hover { background: #fafcfb; }
+  .desc-cell { max-width: 280px; white-space: pre-wrap; word-break: break-word; color: var(--pl-text-muted); font-size: 12.5px; }
+  .enh-cell { font-weight: 600; color: var(--pl-green-dark); }
+  .pill {
+    display: inline-block; padding: 3px 10px; border-radius: 12px;
+    font-size: 11px; font-weight: 600; white-space: nowrap;
+  }
+  .pill-open { background: #e3effb; color: var(--pl-info); }
+  .pill-progress { background: #fff4d9; color: var(--pl-warn); }
+  .pill-blocked { background: #fde2e1; color: var(--pl-danger); }
+  .pill-done { background: #dcefe4; color: var(--pl-success); }
+  .pill-hold { background: #ede5f7; color: #6f42c1; }
+  .pill-sev-critical { background: #fde2e1; color: var(--pl-danger); }
+  .pill-sev-high { background: #ffe9d4; color: #c47900; }
+  .pill-sev-medium { background: #fff4d9; color: #8a6d00; }
+  .pill-sev-low { background: #dcefe4; color: var(--pl-success); }
+  .pill-pri-p0 { background: #b3261e; color: #fff; }
+  .pill-pri-p1 { background: #d97706; color: #fff; }
+  .pill-pri-p2 { background: #ca8a04; color: #fff; }
+  .pill-pri-p3 { background: #6b7280; color: #fff; }
+  .pill-yes { background: #dcefe4; color: var(--pl-success); }
+  .pill-no { background: #f1f1f1; color: var(--pl-text-muted); }
+  .aging-cell { font-weight: 600; }
+  .aging-fresh { color: var(--pl-success); }
+  .aging-warn { color: var(--pl-warn); }
+  .aging-danger { color: var(--pl-danger); }
+  .row-actions { display: flex; gap: 4px; }
+  .icon-btn {
+    background: transparent; border: 1px solid transparent;
+    padding: 4px 6px; border-radius: 4px; color: var(--pl-text-muted);
+    font-size: 14px; line-height: 1;
+  }
+  .icon-btn:hover { background: var(--pl-bg); color: var(--pl-green-dark); }
+  .icon-btn.danger:hover { background: #fdf2f1; color: var(--pl-danger); }
+  .ticket-link { color: var(--pl-info); text-decoration: none; font-size: 12px; }
+  .ticket-link:hover { text-decoration: underline; }
+  .empty-state { padding: 60px 20px; text-align: center; color: var(--pl-text-muted); }
+  .empty-state h3 { color: var(--pl-green-dark); margin: 0 0 6px; }
+
+  /* ------------- MODAL ------------- */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(7,53,41,0.55);
+    display: none; align-items: flex-start; justify-content: center;
+    z-index: 500; padding: 40px 20px; overflow-y: auto;
+  }
+  .modal-backdrop.show { display: flex; }
+  .modal {
+    background: #fff; border-radius: 12px;
+    width: 100%; max-width: 720px;
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+  }
+  .modal.wide { max-width: 900px; }
+  .modal-header {
+    padding: 16px 22px; background: var(--pl-green-dark); color: #fff;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .modal-header h2 { margin: 0; font-size: 16px; font-weight: 600; }
+  .modal-close {
+    background: transparent; border: none; color: #fff;
+    font-size: 20px; cursor: pointer; padding: 0 4px;
+  }
+  .modal-body { padding: 22px; }
+  .modal-footer {
+    padding: 14px 22px; border-top: 1px solid var(--pl-border);
+    display: flex; justify-content: flex-end; gap: 10px;
+    background: #fafcfb;
+  }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .form-grid .full { grid-column: 1 / -1; }
+
+  /* ------------- DROPDOWN MANAGER ------------- */
+  .dd-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--pl-border); margin-bottom: 16px; }
+  .dd-tab {
+    padding: 9px 14px; background: transparent; border: none;
+    border-bottom: 2px solid transparent; color: var(--pl-text-muted);
+    font-weight: 600; font-size: 13px; cursor: pointer;
+  }
+  .dd-tab.active { color: var(--pl-green-dark); border-bottom-color: var(--pl-green); }
+  .dd-list {
+    list-style: none; padding: 0; margin: 0;
+    border: 1px solid var(--pl-border); border-radius: 8px;
+    max-height: 320px; overflow-y: auto;
+  }
+  .dd-list li {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 9px 12px; border-bottom: 1px solid var(--pl-border);
+    font-size: 13px;
+  }
+  .dd-list li:last-child { border-bottom: none; }
+  .dd-list li .actions { display: flex; gap: 6px; }
+  .dd-add { display: flex; gap: 8px; margin-top: 12px; }
+  .dd-add input { flex: 1; padding: 8px 10px; border: 1px solid var(--pl-border); border-radius: 6px; font-size: 13px; }
+  .dd-value { font-weight: 500; }
+  .dd-value .used-count { color: var(--pl-text-muted); font-size: 11px; font-weight: 400; margin-left: 6px; }
+
+  /* ------------- USERS MANAGER ------------- */
+  .users-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .users-table th { background: #f7faf9; color: var(--pl-green-dark); padding: 10px; text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.4px; border-bottom: 1px solid var(--pl-border); }
+  .users-table td { padding: 10px; border-bottom: 1px solid var(--pl-border); }
+
+  /* ------------- TOAST ------------- */
+  #toastContainer { position: fixed; bottom: 24px; right: 24px; z-index: 2000; display: flex; flex-direction: column; gap: 10px; }
+  .toast {
+    background: #fff; border-left: 4px solid var(--pl-green);
+    padding: 12px 18px; border-radius: 6px;
+    box-shadow: var(--shadow-md); font-size: 13px;
+    min-width: 240px; max-width: 360px;
+    animation: slideIn 0.25s ease;
+  }
+  .toast.error { border-left-color: var(--pl-danger); }
+  .toast.warn { border-left-color: var(--pl-warn); }
+  @keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+  /* ------------- ADMIN BAR ------------- */
+  .admin-bar {
+    display: flex; gap: 8px; margin-left: auto;
+  }
+  .hint-text { font-size: 11px; color: var(--pl-text-muted); margin-top: 4px; }
+  .checkbox-wrap { display: flex; align-items: center; gap: 8px; padding: 8px 0; }
+  .checkbox-wrap input { width: 16px; height: 16px; }
+  .checkbox-wrap label { font-size: 13px; font-weight: 500; }
+
+
+  .portal-note { margin: 0 0 16px; padding: 12px 14px; border: 1px solid #cfe4dc; background: #f4f9f7; border-radius: 10px; color: var(--pl-green-dark); font-size: 13px; display: none; }
+  .columns-grid { display: grid; grid-template-columns: 1.2fr 0.8fr 0.8fr 0.8fr 0.8fr; gap: 8px; align-items: center; }
+  .columns-grid.header { font-size: 11px; color: var(--pl-text-muted); text-transform: uppercase; font-weight: 700; margin-bottom: 8px; }
+  .column-row { padding: 8px 0; border-bottom: 1px solid var(--pl-border); }
+  .column-row input[type=text] { width: 100%; padding: 7px 9px; border: 1px solid var(--pl-border); border-radius: 6px; }
+  .view-chip { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--pl-text-muted); }
+  .table-caption { padding: 12px 14px; background: #f7faf9; border-bottom: 1px solid var(--pl-border); color: var(--pl-green-dark); font-weight: 700; font-size: 13px; }
+
+
+  /* ------------- SUBTASKS PAGE ------------- */
+  .subtask-page { display:none; }
+  .subtask-header {
+    background: var(--pl-card); border: 1px solid var(--pl-border); border-radius: 12px;
+    padding: 18px 20px; margin-bottom: 16px; box-shadow: var(--shadow-sm);
+    display:flex; justify-content:space-between; gap:14px; align-items:flex-start; flex-wrap:wrap;
+  }
+  .subtask-title { margin:0; color:var(--pl-green-dark); font-size:20px; }
+  .subtask-meta { margin-top:5px; color:var(--pl-text-muted); font-size:13px; }
+  .subtask-link { color: var(--pl-info); text-decoration: none; font-size: 12px; font-weight: 600; display:inline-block; margin-top:6px; }
+  .subtask-link:hover { text-decoration: underline; }
+  .subtask-actions { display:flex; gap:8px; flex-wrap:wrap; }
+  .columns-section-title { margin:22px 0 8px; font-size:14px; color:var(--pl-green-dark); }
+
+  @media (max-width: 768px) {
+    .form-grid { grid-template-columns: 1fr; }
+    .container { padding: 14px; }
+    .topbar { padding: 10px 14px; }
+    .topbar-title small { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN SCREEN ============ -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="login-brand">
+      <div class="brand-mark">PL</div>
+      <div>
+        <div class="brand-text">Pine Labs</div>
+        <div class="brand-sub">PineLabs Amazon Product tracker(New solutions)</div>
+      </div>
+    </div>
+    <div class="login-title">Sign in to your account</div>
+    <div class="login-sub">Use your registered email and password.</div>
+    <form id="loginForm" autocomplete="off">
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="loginEmail" placeholder="name@pinelabs.com" required />
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="loginPassword" placeholder="••••••••" required />
+      </div>
+      <button type="submit" class="login-btn">Sign In</button>
+      <div class="login-error" id="loginError"></div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="brand-mark">PL</div>
+      <div class="topbar-title">
+        PineLabs Amazon Product tracker(New solutions)
+        <small>Pine Labs · Internal & External Portal</small>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="user-chip">
+        <div class="user-avatar" id="userAvatar">N</div>
+        <div>
+          <div id="userName" style="font-weight:600;">User</div>
+          <div style="font-size:10.5px;opacity:0.75;" id="userEmail">user@pinelabs.com</div>
+        </div>
+        <span class="role-badge" id="userRole">USER</span>
+      </div>
+      <button class="logout-btn" onclick="logout()">Logout</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="portal-note" id="portalNote"></div>
+
+    <!-- KPI ROW -->
+    <div class="kpi-row" id="kpiRow"></div>
+
+    <!-- TOOLBAR -->
+    <div class="toolbar">
+      <div class="toolbar-row">
+        <div class="search-box">
+          <div class="filter-group">
+            <label>Search</label>
+            <input type="text" id="searchInput" placeholder="Search enhancement, description, ticket, remarks…" />
+          </div>
+        </div>
+        <div class="filter-group">
+          <label>Platform</label>
+          <select id="filterPlatform"><option value="">All Platforms</option></select>
+        </div>
+        <div class="filter-group">
+          <label>Owner</label>
+          <select id="filterOwner"><option value="">All Owners</option></select>
+        </div>
+        <div class="filter-group">
+          <label>Status</label>
+          <select id="filterStatus"><option value="">All Status</option></select>
+        </div>
+        <div class="filter-group">
+          <label>Severity</label>
+          <select id="filterSeverity"><option value="">All Severities</option></select>
+        </div>
+        <div class="filter-group">
+          <label>Priority</label>
+          <select id="filterPriority"><option value="">All Priorities</option></select>
+        </div>
+        <div class="filter-group">
+          <label>Revenue Linked</label>
+          <select id="filterRevenue">
+            <option value="">All</option>
+            <option value="Yes">Yes</option>
+            <option value="No">No</option>
+          </select>
+        </div>
+        <div class="filter-group" style="justify-content:flex-end;">
+          <label>&nbsp;</label>
+          <button class="btn btn-secondary btn-sm" onclick="resetFilters()">Reset Filters</button>
+        </div>
+      </div>
+
+      <div class="toolbar-row">
+        <button class="btn btn-primary internal-only" onclick="openItemModal()">+ New Enhancement</button>
+        <button class="btn btn-secondary internal-only" onclick="document.getElementById('importFile').click()">⬆ Import</button>
+        <input type="file" id="importFile" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleImport(event)"/>
+        <button class="btn btn-secondary export-btn" onclick="exportData('xlsx')">⬇ Export XLSX</button>
+        <button class="btn btn-secondary export-btn" onclick="exportData('csv')">⬇ Export CSV</button>
+
+        <div class="admin-bar" id="adminBar" style="display:none;">
+          <button class="btn btn-secondary" onclick="openDropdownManager()">⚙ Manage Dropdowns</button>
+          <button class="btn btn-secondary" onclick="openUsersManager()">👥 Manage Users</button>
+          <button class="btn btn-secondary" onclick="openColumnManager()">▦ Manage Views & Columns</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TABLE -->
+    <div class="table-wrap">
+      <div class="table-scroll">
+        <table class="tracker" id="trackerTable">
+<thead id="trackerHead"></thead>
+          <tbody id="trackerBody"></tbody>
+        </table>
+      </div>
+      <div id="emptyState" class="empty-state" style="display:none;">
+        <h3>No records match your filters</h3>
+        <p>Try clearing filters or add a new enhancement.</p>
+      </div>
+    </div>
+
+    <!-- SUBTASK PAGE -->
+    <div class="subtask-page" id="subtaskPage">
+      <div class="subtask-header">
+        <div>
+          <button class="btn btn-secondary btn-sm" onclick="backToDashboard()">← Back to Dashboard</button>
+          <h2 class="subtask-title" id="subtaskEnhancementTitle">Subtasks</h2>
+          <div class="subtask-meta" id="subtaskEnhancementMeta"></div>
+        </div>
+        <div class="subtask-actions">
+          <button class="btn btn-primary internal-only" onclick="openSubtaskModal()">+ New Subtask</button>
+          <button class="btn btn-secondary export-btn" onclick="exportSubtasks('xlsx')">⬇ Export Subtasks</button>
+          <button class="btn btn-secondary export-btn" onclick="exportSubtasks('csv')">⬇ Export CSV</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <div class="table-scroll">
+          <table class="tracker" id="subtaskTable">
+            <thead id="subtaskHead"></thead>
+            <tbody id="subtaskBody"></tbody>
+          </table>
+        </div>
+        <div id="subtaskEmptyState" class="empty-state" style="display:none;">
+          <h3>No subtasks added</h3>
+          <p>Create linked subtasks under this enhancement to track detailed work items.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ ITEM MODAL ============ -->
+<div class="modal-backdrop" id="itemModal">
+  <div class="modal wide">
+    <div class="modal-header">
+      <h2 id="itemModalTitle">New Enhancement</h2>
+      <button class="modal-close" onclick="closeModal('itemModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <form id="itemForm" autocomplete="off">
+        <input type="hidden" id="itemId"/>
+        <div class="form-grid">
+          <div class="form-group full">
+            <label>Enhancement Title *</label>
+            <input type="text" id="itemEnhancement" required maxlength="200"/>
+          </div>
+          <div class="form-group full">
+            <label>Description</label>
+            <textarea id="itemDescription" rows="3" maxlength="1000"></textarea>
+          </div>
+          <div class="form-group">
+            <label>Platform *</label>
+            <select id="itemPlatform" required></select>
+          </div>
+          <div class="form-group">
+            <label>Owner *</label>
+            <select id="itemOwner" required></select>
+          </div>
+          <div class="form-group">
+            <label>Start Date *</label>
+            <input type="date" id="itemStartDate" required/>
+          </div>
+          <div class="form-group">
+            <label>End Date</label>
+            <input type="date" id="itemEndDate"/>
+            <div class="hint-text">Leave blank if ongoing. Aging is auto-calculated.</div>
+          </div>
+          <div class="form-group">
+            <label>Status *</label>
+            <select id="itemStatus" required></select>
+          </div>
+          <div class="form-group">
+            <label>Revenue Linked *</label>
+            <select id="itemRevenue" required>
+              <option value="Yes">Yes</option>
+              <option value="No">No</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Severity *</label>
+            <select id="itemSeverity" required></select>
+          </div>
+          <div class="form-group">
+            <label>Priority *</label>
+            <select id="itemPriority" required></select>
+          </div>
+          <div class="form-group full">
+            <label>Ticket Reference</label>
+            <input type="text" id="itemTicket" placeholder="JIRA-1234, INC0001234, etc." maxlength="100"/>
+          </div>
+          <div class="form-group full">
+            <label>Remarks</label>
+            <textarea id="itemRemarks" rows="2" maxlength="500"></textarea>
+          </div>
+          <div class="form-group full" id="customFieldsWrap"></div>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('itemModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveItem()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ DROPDOWN MANAGER MODAL ============ -->
+<div class="modal-backdrop" id="dropdownModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Manage Dropdown Values</h2>
+      <button class="modal-close" onclick="closeModal('dropdownModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="dd-tabs" id="ddTabs">
+        <button class="dd-tab active" data-cat="Platform" onclick="switchDDTab('Platform')">Platform</button>
+        <button class="dd-tab" data-cat="Owner" onclick="switchDDTab('Owner')">Owner</button>
+        <button class="dd-tab" data-cat="Status" onclick="switchDDTab('Status')">Status</button>
+        <button class="dd-tab" data-cat="Severity" onclick="switchDDTab('Severity')">Severity</button>
+        <button class="dd-tab" data-cat="Priority" onclick="switchDDTab('Priority')">Priority</button>
+      </div>
+      <ul class="dd-list" id="ddList"></ul>
+      <div class="dd-add">
+        <input type="text" id="ddNewValue" placeholder="Enter new value…" maxlength="60"/>
+        <button class="btn btn-primary btn-sm" onclick="addDDValue()">+ Add</button>
+      </div>
+      <div class="hint-text" style="margin-top:10px;">
+        Editing a value updates all existing records that use it. Deleting a value used in records will require a replacement.
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('dropdownModal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ USERS MANAGER MODAL ============ -->
+<div class="modal-backdrop" id="usersModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Manage Users</h2>
+      <button class="modal-close" onclick="closeModal('usersModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <table class="users-table" id="usersTable">
+        <thead>
+          <tr><th>Name</th><th>Email</th><th>Type / Role</th><th style="text-align:right;">Actions</th></tr>
+        </thead>
+        <tbody id="usersBody"></tbody>
+      </table>
+      <h3 style="margin:18px 0 10px; font-size:14px; color:var(--pl-green-dark);">Add New User</h3>
+      <div class="form-grid">
+        <div class="form-group"><label>Name</label><input type="text" id="newUserName" maxlength="60"/></div>
+        <div class="form-group"><label>Email</label><input type="email" id="newUserEmail" maxlength="100"/></div>
+        <div class="form-group"><label>Password</label><input type="text" id="newUserPwd" maxlength="50"/></div>
+        <div class="form-group">
+          <label>Role</label>
+          <select id="newUserRole"><option value="internal">Internal User</option><option value="external">External User</option><option value="admin">Admin</option></select>
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="addUser()">+ Add User</button>
+      <div class="hint-text" style="margin-top:10px;">Only users created here can log into the portal.</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('usersModal')">Close</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ============ VIEW & COLUMN MANAGER MODAL ============ -->
+<div class="modal-backdrop" id="columnsModal">
+  <div class="modal wide">
+    <div class="modal-header">
+      <h2>Manage Views & Columns</h2>
+      <button class="modal-close" onclick="closeModal('columnsModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="hint-text" style="margin-bottom:12px;">Admins can decide which columns Internal and External users see. Built-in columns can be renamed and hidden; custom columns can be added, edited, or deleted.</div>
+      <div class="columns-grid header"><span>Column Name</span><span>Internal View</span><span>External View</span><span>Custom</span><span style="text-align:right;">Actions</span></div>
+      <div id="columnsList"></div>
+      <h3 style="margin:18px 0 10px; font-size:14px; color:var(--pl-green-dark);">Add Enhancement Custom Column</h3>
+      <div class="dd-add">
+        <input type="text" id="newColumnLabel" placeholder="Enhancement column e.g. Partner ETA, Dependency, Next Action…" maxlength="60"/>
+        <button class="btn btn-primary btn-sm" onclick="addCustomColumn()">+ Add Column</button>
+      </div>
+
+      <h3 class="columns-section-title">Subtask Page Columns</h3>
+      <div class="hint-text" style="margin-bottom:12px;">Configure the columns shown after opening subtasks for a specific enhancement.</div>
+      <div class="columns-grid header"><span>Column Name</span><span>Internal View</span><span>External View</span><span>Custom</span><span style="text-align:right;">Actions</span></div>
+      <div id="subtaskColumnsList"></div>
+
+      <h3 class="columns-section-title">Subtask Access</h3>
+      <div class="hint-text" style="margin-bottom:10px;">Control which user types can open and view subtasks from the main dashboard. Admin users can always view and manage subtasks.</div>
+      <div class="columns-grid header"><span>User Type</span><span>Can View Subtasks</span><span></span><span></span><span></span></div>
+      <div class="column-row columns-grid">
+        <span>Internal Users</span>
+        <label class="view-chip"><input type="checkbox" id="subtaskAccessInternal" onchange="saveSubtaskAccessSettings()"/> Allow</label>
+        <span class="hint-text">Employees / internal portal users</span><span></span><span></span>
+      </div>
+      <div class="column-row columns-grid">
+        <span>External Users</span>
+        <label class="view-chip"><input type="checkbox" id="subtaskAccessExternal" onchange="saveSubtaskAccessSettings()"/> Allow</label>
+        <span class="hint-text">Partners / client users</span><span></span><span></span>
+      </div>
+
+      <h3 style="margin:18px 0 10px; font-size:14px; color:var(--pl-green-dark);">Add Subtask Custom Column</h3>
+      <div class="dd-add">
+        <input type="text" id="newSubtaskColumnLabel" placeholder="Subtask column e.g. Task Type, ETA, Dependency…" maxlength="60"/>
+        <button class="btn btn-primary btn-sm" onclick="addSubtaskColumn()">+ Add Subtask Column</button>
+      </div>
+
+      <div class="checkbox-wrap" style="margin-top:12px;">
+        <input type="checkbox" id="externalExportAllowed" onchange="saveExternalExportSetting()"/>
+        <label for="externalExportAllowed">Allow external users to export their configured view</label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('columnsModal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SUBTASK MODAL ============ -->
+<div class="modal-backdrop" id="subtaskModal">
+  <div class="modal wide">
+    <div class="modal-header">
+      <h2 id="subtaskModalTitle">New Subtask</h2>
+      <button class="modal-close" onclick="closeModal('subtaskModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <form id="subtaskForm" autocomplete="off">
+        <input type="hidden" id="subtaskId"/>
+        <div class="form-grid">
+          <div class="form-group full"><label>Subtask Title *</label><input type="text" id="subtaskTitle" required maxlength="200"/></div>
+          <div class="form-group"><label>Status *</label><select id="subtaskStatus"></select></div>
+          <div class="form-group"><label>Owner</label><select id="subtaskOwner"></select></div>
+          <div class="form-group"><label>Start Date</label><input type="date" id="subtaskStartDate"/></div>
+          <div class="form-group"><label>Due Date</label><input type="date" id="subtaskDueDate"/></div>
+          <div class="form-group full"><label>Remarks</label><textarea id="subtaskRemarks" rows="2" maxlength="600"></textarea></div>
+          <div id="subtaskCustomFields" class="form-grid full"></div>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('subtaskModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSubtask()">Save Subtask</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ CONFIRM MODAL ============ -->
+<div class="modal-backdrop" id="confirmModal">
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-header">
+      <h2 id="confirmTitle">Confirm</h2>
+      <button class="modal-close" onclick="closeModal('confirmModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <p id="confirmMessage" style="margin:0 0 12px;"></p>
+      <div id="confirmReplaceWrap" style="display:none;">
+        <div class="form-group">
+          <label>Replace with</label>
+          <select id="confirmReplaceSelect"></select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('confirmModal')">Cancel</button>
+      <button class="btn btn-danger" id="confirmOkBtn">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div id="toastContainer"></div>
+
+<script>
+/* ========== STORAGE KEYS ========== */
+const K = {
+  USERS: 'pl_pt_users_v1',
+  ITEMS: 'pl_pt_items_v1',
+  DROPDOWNS: 'pl_pt_dropdowns_v1',
+  SESSION: 'pl_pt_session_v1',
+  CONFIG: 'pl_pt_config_v1'
+};
+
+/* ========== SEED DATA ========== */
+function seed() {
+  if (!localStorage.getItem(K.USERS)) {
+    localStorage.setItem(K.USERS, JSON.stringify([
+      { id: 1, name: 'Admin', email: 'admin@pinelabs.com', password: 'admin123', role: 'admin' },
+      { id: 2, name: 'Nitin', email: 'nitin@pinelabs.com', password: 'user123', role: 'user' },
+      { id: 3, name: 'Karthikeyan', email: 'karthik@pinelabs.com', password: 'user123', role: 'user' }
+    ]));
+  }
+  if (!localStorage.getItem(K.DROPDOWNS)) {
+    localStorage.setItem(K.DROPDOWNS, JSON.stringify({
+      Platform: ['Amazon', 'WooHoo', 'NPCI', 'Gaming', 'Revalidation Portal', 'BGMI Top-up'],
+      Owner: ['Nitin', 'Praveen K.', 'Karthikeyan', 'Nagarjun', 'Tejaswini', 'Sreehari', 'Ashritha', 'Abhishek'],
+      Status: ['Open', 'In Progress', 'On Hold', 'Blocked', 'Done'],
+      Severity: ['Critical', 'High', 'Medium', 'Low'],
+      Priority: ['P0', 'P1', 'P2', 'P3']
+    }));
+  }
+  if (!localStorage.getItem(K.ITEMS)) {
+    const today = new Date();
+    const d = (n) => { const x = new Date(today); x.setDate(x.getDate() - n); return x.toISOString().slice(0,10); };
+    localStorage.setItem(K.ITEMS, JSON.stringify([
+      { id: 1, enhancement: 'Bulk Reissuance API', description: 'Allow ops team to reissue expired gift cards in bulk with CSV upload and validation dashboard.', platform: 'WooHoo', startDate: d(45), endDate: '', owner: 'Praveen K.', status: 'In Progress', revenueLinked: 'Yes', ticketRef: 'JIRA-4521', remarks: 'Validation logic under review', severity: 'High', priority: 'P1' },
+      { id: 2, enhancement: 'Amazon Velocity Alerts', description: 'Productized alerting framework for transactions exceeding 15L monthly threshold.', platform: 'Amazon', startDate: d(20), endDate: '', owner: 'Karthikeyan', status: 'Open', revenueLinked: 'Yes', ticketRef: 'JIRA-4602', remarks: 'Pending engineering ownership', severity: 'Critical', priority: 'P0' },
+      { id: 3, enhancement: 'BGMI UC Top-up Flow', description: 'New top-up flow with GST handling (CGST 9% + SGST 9%) and order summary.', platform: 'Gaming', startDate: d(60), endDate: d(5), owner: 'Nitin', status: 'Done', revenueLinked: 'Yes', ticketRef: 'JIRA-4488', remarks: 'Released to UAT', severity: 'Medium', priority: 'P2' },
+      { id: 4, enhancement: 'NPCI Settlement Recon', description: 'Automate end-of-day settlement reconciliation report for NPCI partners.', platform: 'NPCI', startDate: d(90), endDate: '', owner: 'Nagarjun', status: 'On Hold', revenueLinked: 'No', ticketRef: 'JIRA-4221', remarks: 'Awaiting partner API spec', severity: 'Low', priority: 'P3' },
+      { id: 5, enhancement: 'Revalidation Portal Uptime Monitor', description: 'Set up active monitoring after 1.5 month outage went undetected.', platform: 'Revalidation Portal', startDate: d(15), endDate: '', owner: 'Tejaswini', status: 'Blocked', revenueLinked: 'Yes', ticketRef: 'INC-9981', remarks: 'Vendor dependency', severity: 'Critical', priority: 'P0' }
+    ]));
+  }
+}
+seed();
+
+/* ========== ROLE, VIEW AND COLUMN CUSTOMIZATION EXTENSIONS ========== */
+const BASE_COLUMNS = [
+  { key: 'sno', label: 'S No.', builtin: true, internal: true, external: true },
+  { key: 'enhancement', label: 'Enhancement', builtin: true, internal: true, external: true },
+  { key: 'description', label: 'Description', builtin: true, internal: true, external: true },
+  { key: 'platform', label: 'Platform', builtin: true, internal: true, external: true },
+  { key: 'startDate', label: 'Start Date', builtin: true, internal: true, external: false },
+  { key: 'endDate', label: 'End Date', builtin: true, internal: true, external: false },
+  { key: 'aging', label: 'Aging (days)', builtin: true, internal: true, external: false },
+  { key: 'owner', label: 'Owner', builtin: true, internal: true, external: false },
+  { key: 'status', label: 'Status', builtin: true, internal: true, external: true },
+  { key: 'revenueLinked', label: 'Revenue', builtin: true, internal: true, external: false },
+  { key: 'ticketRef', label: 'Ticket Ref.', builtin: true, internal: true, external: true },
+  { key: 'remarks', label: 'Remarks', builtin: true, internal: true, external: true },
+  { key: 'severity', label: 'Severity', builtin: true, internal: true, external: false },
+  { key: 'priority', label: 'Priority', builtin: true, internal: true, external: false },
+  { key: 'actions', label: 'Actions', builtin: true, internal: true, external: false }
+];
+function defaultConfig() { return { externalExportAllowed: false, subtaskAccess: { internal: true, external: false }, columns: JSON.parse(JSON.stringify(BASE_COLUMNS)) }; }
+function getConfig() { return JSON.parse(localStorage.getItem(K.CONFIG) || 'null') || defaultConfig(); }
+function setConfig(v) { localStorage.setItem(K.CONFIG, JSON.stringify(v)); }
+function migratePortalData() {
+  const users = getUsers();
+  let changed = false;
+  users.forEach(u => { if (u.role === 'user') { u.role = 'internal'; changed = true; } });
+  if (!users.some(u => u.email.toLowerCase() === 'partner@external.com')) {
+    users.push({ id: users.length ? Math.max(...users.map(u => u.id)) + 1 : 1, name: 'Amazon Partner', email: 'partner@external.com', password: 'partner123', role: 'external' });
+    changed = true;
+  }
+  if (changed) setUsers(users);
+  const cfg = getConfig();
+  const byKey = Object.fromEntries((cfg.columns || []).map(c => [c.key, c]));
+  BASE_COLUMNS.forEach(c => { if (!byKey[c.key]) cfg.columns.push(JSON.parse(JSON.stringify(c))); });
+  setConfig(cfg);
+}
+migratePortalData();
+function isAdmin() { return currentUser && currentUser.role === 'admin'; }
+function isExternal() { return currentUser && currentUser.role === 'external'; }
+function canWrite() { return currentUser && currentUser.role !== 'external'; }
+function roleLabel(role) { return role === 'admin' ? 'ADMIN' : role === 'external' ? 'EXTERNAL' : 'INTERNAL'; }
+function visibleColumns() {
+  const cfg = getConfig();
+  const viewKey = isExternal() ? 'external' : 'internal';
+  return cfg.columns.filter(c => c[viewKey] && (c.key !== 'actions' || canWrite()));
+}
+function columnValue(it, col, idx) {
+  const age = calcAging(it.startDate, it.endDate);
+  const aClass = agingClass(age, !!it.endDate);
+  const ticket = it.ticketRef ? `<span class="ticket-link">${escapeHtml(it.ticketRef)}</span>` : '<span style="color:#aaa;">—</span>';
+  switch (col.key) {
+    case 'sno': return idx + 1;
+    case 'enhancement': return `<span class="enh-cell">${escapeHtml(it.enhancement)}</span>`;
+    case 'description': return `<span class="desc-cell">${escapeHtml(it.description || '')}</span>`;
+    case 'platform': return escapeHtml(it.platform);
+    case 'startDate': return it.startDate || '';
+    case 'endDate': return it.endDate || '<span style="color:#aaa;">Ongoing</span>';
+    case 'aging': return `<span class="aging-cell ${aClass}">${age}</span>`;
+    case 'owner': return escapeHtml(it.owner);
+    case 'status': return statusPill(it.status);
+    case 'revenueLinked': return revPill(it.revenueLinked);
+    case 'ticketRef': return ticket;
+    case 'remarks': return `<span class="desc-cell">${escapeHtml(it.remarks || '')}</span>`;
+    case 'severity': return sevPill(it.severity);
+    case 'priority': return priPill(it.priority);
+    case 'actions': return `<div class="row-actions"><button class="icon-btn" title="Edit" onclick="openItemModal(${it.id})">✎</button><button class="icon-btn danger" title="Delete" onclick="deleteItem(${it.id})">🗑</button></div>`;
+    default: return escapeHtml((it.custom && it.custom[col.key]) || '');
+  }
+}
+function showApp() {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('userName').textContent = currentUser.name;
+  document.getElementById('userEmail').textContent = currentUser.email;
+  document.getElementById('userAvatar').textContent = currentUser.name.charAt(0).toUpperCase();
+  document.getElementById('userRole').textContent = roleLabel(currentUser.role);
+  document.getElementById('adminBar').style.display = isAdmin() ? 'flex' : 'none';
+  document.querySelectorAll('.internal-only').forEach(el => el.style.display = canWrite() ? 'inline-flex' : 'none');
+  const cfg = getConfig();
+  document.querySelectorAll('.export-btn').forEach(el => el.style.display = (!isExternal() || cfg.externalExportAllowed) ? 'inline-flex' : 'none');
+  const note = document.getElementById('portalNote');
+  if (isExternal()) {
+    note.style.display = 'block';
+    note.textContent = 'External dashboard view: read-only access with columns configured by the admin.';
+  } else {
+    note.style.display = 'none';
+  }
+  refreshAll();
+}
+
+
+/* ========== STATE ========== */
+let currentUser = null;
+let editingDDCategory = 'Platform';
+let confirmCallback = null;
+
+function getUsers() { return JSON.parse(localStorage.getItem(K.USERS) || '[]'); }
+function setUsers(v) { localStorage.setItem(K.USERS, JSON.stringify(v)); }
+function getItems() { return JSON.parse(localStorage.getItem(K.ITEMS) || '[]'); }
+function setItems(v) { localStorage.setItem(K.ITEMS, JSON.stringify(v)); }
+function getDropdowns() { return JSON.parse(localStorage.getItem(K.DROPDOWNS) || '{}'); }
+function setDropdowns(v) { localStorage.setItem(K.DROPDOWNS, JSON.stringify(v)); }
+
+/* ========== AUTH ========== */
+function attemptLogin(e) {
+  e.preventDefault();
+  const email = document.getElementById('loginEmail').value.trim().toLowerCase();
+  const pwd = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+  const user = getUsers().find(u => u.email.toLowerCase() === email && u.password === pwd);
+  if (!user) { errEl.textContent = 'Invalid email or password.'; return; }
+  currentUser = user;
+  sessionStorage.setItem(K.SESSION, JSON.stringify({ id: user.id }));
+  showApp();
+}
+function logout() {
+  sessionStorage.removeItem(K.SESSION);
+  currentUser = null;
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('loginEmail').value = '';
+  document.getElementById('loginPassword').value = '';
+}
+function restoreSession() {
+  const s = sessionStorage.getItem(K.SESSION);
+  if (!s) return false;
+  const id = JSON.parse(s).id;
+  const u = getUsers().find(x => x.id === id);
+  if (!u) return false;
+  currentUser = u;
+  return true;
+}
+function showApp() {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('userName').textContent = currentUser.name;
+  document.getElementById('userEmail').textContent = currentUser.email;
+  document.getElementById('userAvatar').textContent = currentUser.name.charAt(0).toUpperCase();
+  document.getElementById('userRole').textContent = currentUser.role.toUpperCase();
+  document.getElementById('adminBar').style.display = currentUser.role === 'admin' ? 'flex' : 'none';
+  refreshAll();
+}
+
+/* ========== HELPERS ========== */
+function calcAging(start, end) {
+  if (!start) return '';
+  const s = new Date(start);
+  const e = end ? new Date(end) : new Date();
+  const diff = Math.floor((e - s) / (1000 * 60 * 60 * 24));
+  return diff < 0 ? 0 : diff;
+}
+function agingClass(days, hasEnd) {
+  if (hasEnd) return 'aging-fresh';
+  if (days <= 14) return 'aging-fresh';
+  if (days <= 45) return 'aging-warn';
+  return 'aging-danger';
+}
+function statusPill(s) {
+  const map = { 'Open': 'pill-open', 'In Progress': 'pill-progress', 'On Hold': 'pill-hold', 'Blocked': 'pill-blocked', 'Done': 'pill-done' };
+  return `<span class="pill ${map[s] || 'pill-open'}">${escapeHtml(s)}</span>`;
+}
+function sevPill(s) {
+  const map = { 'Critical': 'pill-sev-critical', 'High': 'pill-sev-high', 'Medium': 'pill-sev-medium', 'Low': 'pill-sev-low' };
+  return `<span class="pill ${map[s] || 'pill-sev-medium'}">${escapeHtml(s)}</span>`;
+}
+function priPill(p) {
+  const map = { 'P0': 'pill-pri-p0', 'P1': 'pill-pri-p1', 'P2': 'pill-pri-p2', 'P3': 'pill-pri-p3' };
+  return `<span class="pill ${map[p] || 'pill-pri-p3'}">${escapeHtml(p)}</span>`;
+}
+function revPill(r) {
+  return `<span class="pill ${r === 'Yes' ? 'pill-yes' : 'pill-no'}">${r}</span>`;
+}
+function escapeHtml(s) { if (s == null) return ''; return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+function toast(msg, type='success') {
+  const el = document.createElement('div');
+  el.className = 'toast ' + (type === 'error' ? 'error' : type === 'warn' ? 'warn' : '');
+  el.textContent = msg;
+  document.getElementById('toastContainer').appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+/* ========== POPULATE DROPDOWNS ========== */
+function fillSelect(el, values, includeAll, allLabel) {
+  const cur = el.value;
+  el.innerHTML = '';
+  if (includeAll) {
+    const o = document.createElement('option');
+    o.value = ''; o.textContent = allLabel || 'All';
+    el.appendChild(o);
+  }
+  values.forEach(v => {
+    const o = document.createElement('option');
+    o.value = v; o.textContent = v;
+    el.appendChild(o);
+  });
+  if (cur && values.includes(cur)) el.value = cur;
+}
+function populateAllDropdowns() {
+  const dd = getDropdowns();
+  fillSelect(document.getElementById('filterPlatform'), dd.Platform, true, 'All Platforms');
+  fillSelect(document.getElementById('filterOwner'), dd.Owner, true, 'All Owners');
+  fillSelect(document.getElementById('filterStatus'), dd.Status, true, 'All Status');
+  fillSelect(document.getElementById('filterSeverity'), dd.Severity, true, 'All Severities');
+  fillSelect(document.getElementById('filterPriority'), dd.Priority, true, 'All Priorities');
+  fillSelect(document.getElementById('itemPlatform'), dd.Platform, false);
+  fillSelect(document.getElementById('itemOwner'), dd.Owner, false);
+  fillSelect(document.getElementById('itemStatus'), dd.Status, false);
+  fillSelect(document.getElementById('itemSeverity'), dd.Severity, false);
+  fillSelect(document.getElementById('itemPriority'), dd.Priority, false);
+}
+
+/* ========== RENDER TABLE ========== */
+function getFilters() {
+  return {
+    search: document.getElementById('searchInput').value.trim().toLowerCase(),
+    platform: document.getElementById('filterPlatform').value,
+    owner: document.getElementById('filterOwner').value,
+    status: document.getElementById('filterStatus').value,
+    severity: document.getElementById('filterSeverity').value,
+    priority: document.getElementById('filterPriority').value,
+    revenue: document.getElementById('filterRevenue').value
+  };
+}
+function applyFilters(items) {
+  const f = getFilters();
+  return items.filter(it => {
+    if (f.platform && it.platform !== f.platform) return false;
+    if (f.owner && it.owner !== f.owner) return false;
+    if (f.status && it.status !== f.status) return false;
+    if (f.severity && it.severity !== f.severity) return false;
+    if (f.priority && it.priority !== f.priority) return false;
+    if (f.revenue && it.revenueLinked !== f.revenue) return false;
+    if (f.search) {
+      const hay = [it.enhancement, it.description, it.ticketRef, it.remarks, it.owner, it.platform].join(' ').toLowerCase();
+      if (!hay.includes(f.search)) return false;
+    }
+    return true;
+  });
+}
+function renderTable() {
+  const all = getItems();
+  const filtered = applyFilters(all);
+  const tbody = document.getElementById('trackerBody');
+  const empty = document.getElementById('emptyState');
+  tbody.innerHTML = '';
+  if (filtered.length === 0) {
+    empty.style.display = 'block';
+    document.getElementById('trackerTable').style.display = 'none';
+  } else {
+    empty.style.display = 'none';
+    document.getElementById('trackerTable').style.display = '';
+  }
+  filtered.forEach((it, idx) => {
+    const age = calcAging(it.startDate, it.endDate);
+    const aClass = agingClass(age, !!it.endDate);
+    const ticket = it.ticketRef ? `<span class="ticket-link">${escapeHtml(it.ticketRef)}</span>` : '<span style="color:#aaa;">—</span>';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${idx + 1}</td>
+      <td class="enh-cell">${escapeHtml(it.enhancement)}</td>
+      <td class="desc-cell">${escapeHtml(it.description || '')}</td>
+      <td>${escapeHtml(it.platform)}</td>
+      <td>${it.startDate || ''}</td>
+      <td>${it.endDate || '<span style="color:#aaa;">Ongoing</span>'}</td>
+      <td class="aging-cell ${aClass}">${age}</td>
+      <td>${escapeHtml(it.owner)}</td>
+      <td>${statusPill(it.status)}</td>
+      <td>${revPill(it.revenueLinked)}</td>
+      <td>${ticket}</td>
+      <td class="desc-cell">${escapeHtml(it.remarks || '')}</td>
+      <td>${sevPill(it.severity)}</td>
+      <td>${priPill(it.priority)}</td>
+      <td>
+        <div class="row-actions">
+          <button class="icon-btn" title="Edit" onclick="openItemModal(${it.id})">✎</button>
+          <button class="icon-btn danger" title="Delete" onclick="deleteItem(${it.id})">🗑</button>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+  renderKPIs(all, filtered);
+}
+function renderKPIs(all, filtered) {
+  const row = document.getElementById('kpiRow');
+  const open = filtered.filter(i => i.status === 'Open').length;
+  const inProg = filtered.filter(i => i.status === 'In Progress').length;
+  const blocked = filtered.filter(i => i.status === 'Blocked').length;
+  const done = filtered.filter(i => i.status === 'Done').length;
+  const critical = filtered.filter(i => i.severity === 'Critical').length;
+  const revLinked = filtered.filter(i => i.revenueLinked === 'Yes').length;
+  row.innerHTML = `
+    <div class="kpi-card"><div class="kpi-label">Total Records</div><div class="kpi-value">${filtered.length}</div><div class="kpi-sub">of ${all.length} total</div></div>
+    <div class="kpi-card accent-info"><div class="kpi-label">Open</div><div class="kpi-value">${open}</div><div class="kpi-sub">awaiting action</div></div>
+    <div class="kpi-card accent-warn"><div class="kpi-label">In Progress</div><div class="kpi-value">${inProg}</div><div class="kpi-sub">actively worked</div></div>
+    <div class="kpi-card accent-danger"><div class="kpi-label">Blocked</div><div class="kpi-value">${blocked}</div><div class="kpi-sub">needs attention</div></div>
+    <div class="kpi-card accent-green"><div class="kpi-label">Done</div><div class="kpi-value">${done}</div><div class="kpi-sub">completed</div></div>
+    <div class="kpi-card accent-danger"><div class="kpi-label">Critical Severity</div><div class="kpi-value">${critical}</div><div class="kpi-sub">high impact</div></div>
+    <div class="kpi-card accent-green"><div class="kpi-label">Revenue Linked</div><div class="kpi-value">${revLinked}</div><div class="kpi-sub">money items</div></div>
+  `;
+}
+
+/* ========== ITEM CRUD ========== */
+function openItemModal(id) {
+  const dd = getDropdowns();
+  populateAllDropdowns();
+  document.getElementById('itemForm').reset();
+  document.getElementById('itemId').value = '';
+  document.getElementById('itemModalTitle').textContent = id ? 'Edit Enhancement' : 'New Enhancement';
+  if (id) {
+    const it = getItems().find(x => x.id === id);
+    if (!it) return;
+    document.getElementById('itemId').value = it.id;
+    document.getElementById('itemEnhancement').value = it.enhancement;
+    document.getElementById('itemDescription').value = it.description || '';
+    document.getElementById('itemPlatform').value = it.platform;
+    document.getElementById('itemOwner').value = it.owner;
+    document.getElementById('itemStartDate').value = it.startDate;
+    document.getElementById('itemEndDate').value = it.endDate || '';
+    document.getElementById('itemStatus').value = it.status;
+    document.getElementById('itemRevenue').value = it.revenueLinked;
+    document.getElementById('itemSeverity').value = it.severity;
+    document.getElementById('itemPriority').value = it.priority;
+    document.getElementById('itemTicket').value = it.ticketRef || '';
+    document.getElementById('itemRemarks').value = it.remarks || '';
+  } else {
+    document.getElementById('itemStartDate').value = new Date().toISOString().slice(0, 10);
+  }
+  document.getElementById('itemModal').classList.add('show');
+}
+function saveItem() {
+  const id = document.getElementById('itemId').value;
+  const data = {
+    enhancement: document.getElementById('itemEnhancement').value.trim(),
+    description: document.getElementById('itemDescription').value.trim(),
+    platform: document.getElementById('itemPlatform').value,
+    owner: document.getElementById('itemOwner').value,
+    startDate: document.getElementById('itemStartDate').value,
+    endDate: document.getElementById('itemEndDate').value,
+    status: document.getElementById('itemStatus').value,
+    revenueLinked: document.getElementById('itemRevenue').value,
+    severity: document.getElementById('itemSeverity').value,
+    priority: document.getElementById('itemPriority').value,
+    ticketRef: document.getElementById('itemTicket').value.trim(),
+    remarks: document.getElementById('itemRemarks').value.trim()
+  };
+  if (!data.enhancement) { toast('Enhancement title is required', 'error'); return; }
+  if (!data.startDate) { toast('Start date is required', 'error'); return; }
+  if (data.endDate && data.endDate < data.startDate) { toast('End date cannot be before start date', 'error'); return; }
+  const items = getItems();
+  if (id) {
+    const idx = items.findIndex(x => x.id == id);
+    if (idx > -1) items[idx] = { ...items[idx], ...data };
+    toast('Enhancement updated');
+  } else {
+    const newId = items.length ? Math.max(...items.map(x => x.id)) + 1 : 1;
+    items.push({ id: newId, ...data });
+    toast('Enhancement added');
+  }
+  setItems(items);
+  closeModal('itemModal');
+  renderTable();
+}
+function deleteItem(id) {
+  openConfirm('Delete enhancement?', 'This action cannot be undone.', () => {
+    setItems(getItems().filter(x => x.id !== id));
+    renderTable();
+    toast('Enhancement deleted');
+  });
+}
+
+/* ========== DROPDOWN MANAGER ========== */
+function openDropdownManager() {
+  if (currentUser.role !== 'admin') { toast('Only admins can manage dropdowns', 'error'); return; }
+  editingDDCategory = 'Platform';
+  document.querySelectorAll('.dd-tab').forEach(t => t.classList.toggle('active', t.dataset.cat === 'Platform'));
+  renderDDList();
+  document.getElementById('dropdownModal').classList.add('show');
+}
+function switchDDTab(cat) {
+  editingDDCategory = cat;
+  document.querySelectorAll('.dd-tab').forEach(t => t.classList.toggle('active', t.dataset.cat === cat));
+  renderDDList();
+}
+function renderDDList() {
+  const dd = getDropdowns();
+  const items = getItems();
+  const fieldMap = { Platform: 'platform', Owner: 'owner', Status: 'status', Severity: 'severity', Priority: 'priority' };
+  const field = fieldMap[editingDDCategory];
+  const ul = document.getElementById('ddList');
+  ul.innerHTML = '';
+  (dd[editingDDCategory] || []).forEach((val, idx) => {
+    const usedCount = items.filter(it => it[field] === val).length;
+    const li = document.createElement('li');
+    li.innerHTML = `
+      <span class="dd-value">${escapeHtml(val)}<span class="used-count">(${usedCount} record${usedCount !== 1 ? 's' : ''})</span></span>
+      <span class="actions">
+        <button class="icon-btn" title="Edit" onclick="editDDValue(${idx})">✎</button>
+        <button class="icon-btn danger" title="Delete" onclick="deleteDDValue(${idx})">🗑</button>
+      </span>`;
+    ul.appendChild(li);
+  });
+}
+function addDDValue() {
+  const input = document.getElementById('ddNewValue');
+  const val = input.value.trim();
+  if (!val) { toast('Enter a value', 'error'); return; }
+  const dd = getDropdowns();
+  if (!dd[editingDDCategory]) dd[editingDDCategory] = [];
+  if (dd[editingDDCategory].some(v => v.toLowerCase() === val.toLowerCase())) { toast('Value already exists', 'error'); return; }
+  dd[editingDDCategory].push(val);
+  setDropdowns(dd);
+  input.value = '';
+  renderDDList();
+  populateAllDropdowns();
+  toast(`Added "${val}" to ${editingDDCategory}`);
+}
+function editDDValue(idx) {
+  const dd = getDropdowns();
+  const oldVal = dd[editingDDCategory][idx];
+  const newVal = prompt(`Rename "${oldVal}" to:`, oldVal);
+  if (newVal === null) return;
+  const trimmed = newVal.trim();
+  if (!trimmed) { toast('Value cannot be empty', 'error'); return; }
+  if (trimmed === oldVal) return;
+  if (dd[editingDDCategory].some((v, i) => i !== idx && v.toLowerCase() === trimmed.toLowerCase())) { toast('That value already exists', 'error'); return; }
+  dd[editingDDCategory][idx] = trimmed;
+  setDropdowns(dd);
+  const fieldMap = { Platform: 'platform', Owner: 'owner', Status: 'status', Severity: 'severity', Priority: 'priority' };
+  const field = fieldMap[editingDDCategory];
+  const items = getItems().map(it => it[field] === oldVal ? { ...it, [field]: trimmed } : it);
+  setItems(items);
+  renderDDList();
+  populateAllDropdowns();
+  renderTable();
+  toast(`Renamed to "${trimmed}"`);
+}
+function deleteDDValue(idx) {
+  const dd = getDropdowns();
+  const val = dd[editingDDCategory][idx];
+  const fieldMap = { Platform: 'platform', Owner: 'owner', Status: 'status', Severity: 'severity', Priority: 'priority' };
+  const field = fieldMap[editingDDCategory];
+  const items = getItems();
+  const usedCount = items.filter(it => it[field] === val).length;
+  if (dd[editingDDCategory].length <= 1) { toast('Cannot delete the only value in this category', 'error'); return; }
+  if (usedCount === 0) {
+    openConfirm('Delete value?', `"${val}" will be removed from ${editingDDCategory}.`, () => {
+      dd[editingDDCategory].splice(idx, 1);
+      setDropdowns(dd);
+      renderDDList();
+      populateAllDropdowns();
+      toast(`Deleted "${val}"`);
+    });
+  } else {
+    const replacements = dd[editingDDCategory].filter((_, i) => i !== idx);
+    openConfirmReplace(
+      'Replace value before deleting',
+      `"${val}" is used in ${usedCount} record(s). Pick a replacement:`,
+      replacements,
+      (replacement) => {
+        dd[editingDDCategory].splice(idx, 1);
+        setDropdowns(dd);
+        const newItems = getItems().map(it => it[field] === val ? { ...it, [field]: replacement } : it);
+        setItems(newItems);
+        renderDDList();
+        populateAllDropdowns();
+        renderTable();
+        toast(`Replaced "${val}" with "${replacement}"`);
+      }
+    );
+  }
+}
+
+/* ========== CONFIRM MODAL ========== */
+function openConfirm(title, msg, cb) {
+  document.getElementById('confirmTitle').textContent = title;
+  document.getElementById('confirmMessage').textContent = msg;
+  document.getElementById('confirmReplaceWrap').style.display = 'none';
+  const btn = document.getElementById('confirmOkBtn');
+  btn.textContent = 'Delete';
+  btn.onclick = () => { cb(); closeModal('confirmModal'); };
+  document.getElementById('confirmModal').classList.add('show');
+}
+function openConfirmReplace(title, msg, options, cb) {
+  document.getElementById('confirmTitle').textContent = title;
+  document.getElementById('confirmMessage').textContent = msg;
+  const wrap = document.getElementById('confirmReplaceWrap');
+  wrap.style.display = 'block';
+  const sel = document.getElementById('confirmReplaceSelect');
+  sel.innerHTML = '';
+  options.forEach(o => { const opt = document.createElement('option'); opt.value = o; opt.textContent = o; sel.appendChild(opt); });
+  const btn = document.getElementById('confirmOkBtn');
+  btn.textContent = 'Replace & Delete';
+  btn.onclick = () => { cb(sel.value); closeModal('confirmModal'); };
+  document.getElementById('confirmModal').classList.add('show');
+}
+
+/* ========== USERS MANAGER ========== */
+function openUsersManager() {
+  if (currentUser.role !== 'admin') { toast('Only admins can manage users', 'error'); return; }
+  renderUsers();
+  document.getElementById('usersModal').classList.add('show');
+}
+function renderUsers() {
+  const tbody = document.getElementById('usersBody');
+  tbody.innerHTML = '';
+  getUsers().forEach(u => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${escapeHtml(u.name)}</td>
+      <td>${escapeHtml(u.email)}</td>
+      <td><span class="pill ${u.role === 'admin' ? 'pill-sev-high' : 'pill-open'}">${u.role.toUpperCase()}</span></td>
+      <td style="text-align:right;">
+        <button class="icon-btn" title="Reset Password" onclick="resetUserPwd(${u.id})">🔑</button>
+        <button class="icon-btn danger" title="Delete" onclick="deleteUser(${u.id})">🗑</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+function addUser() {
+  const name = document.getElementById('newUserName').value.trim();
+  const email = document.getElementById('newUserEmail').value.trim().toLowerCase();
+  const pwd = document.getElementById('newUserPwd').value;
+  const role = document.getElementById('newUserRole').value;
+  if (!name || !email || !pwd) { toast('All fields are required', 'error'); return; }
+  if (!/^\S+@\S+\.\S+$/.test(email)) { toast('Enter a valid email', 'error'); return; }
+  const users = getUsers();
+  if (users.some(u => u.email.toLowerCase() === email)) { toast('Email already exists', 'error'); return; }
+  const newId = users.length ? Math.max(...users.map(u => u.id)) + 1 : 1;
+  users.push({ id: newId, name, email, password: pwd, role });
+  setUsers(users);
+  document.getElementById('newUserName').value = '';
+  document.getElementById('newUserEmail').value = '';
+  document.getElementById('newUserPwd').value = '';
+  renderUsers();
+  toast(`User ${name} added`);
+}
+function resetUserPwd(id) {
+  const u = getUsers().find(x => x.id === id);
+  if (!u) return;
+  const newPwd = prompt(`Enter new password for ${u.email}:`, '');
+  if (newPwd === null) return;
+  if (!newPwd.trim()) { toast('Password cannot be empty', 'error'); return; }
+  const users = getUsers().map(x => x.id === id ? { ...x, password: newPwd } : x);
+  setUsers(users);
+  toast('Password updated');
+}
+function deleteUser(id) {
+  if (id === currentUser.id) { toast('You cannot delete your own account', 'error'); return; }
+  const u = getUsers().find(x => x.id === id);
+  if (!u) return;
+  openConfirm('Delete user?', `${u.email} will lose access to the portal.`, () => {
+    setUsers(getUsers().filter(x => x.id !== id));
+    renderUsers();
+    toast('User deleted');
+  });
+}
+
+/* ========== EXPORT ========== */
+function exportData(fmt) {
+  const items = applyFilters(getItems());
+  const rows = items.map((it, i) => ({
+    'S No.': i + 1,
+    'Enhancement': it.enhancement,
+    'Description': it.description || '',
+    'Platform': it.platform,
+    'Start Date': it.startDate,
+    'End Date': it.endDate || '',
+    'Aging (days)': calcAging(it.startDate, it.endDate),
+    'Owner': it.owner,
+    'Status': it.status,
+    'Revenue Linked': it.revenueLinked,
+    'Ticket Reference': it.ticketRef || '',
+    'Remarks': it.remarks || '',
+    'Severity': it.severity,
+    'Priority': it.priority
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [
+    { wch: 6 }, { wch: 30 }, { wch: 40 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
+    { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 18 }, { wch: 30 }, { wch: 12 }, { wch: 10 }
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Product Tracker');
+  const ts = new Date().toISOString().slice(0, 10);
+  if (fmt === 'csv') {
+    XLSX.writeFile(wb, `product-tracker-${ts}.csv`, { bookType: 'csv' });
+  } else {
+    XLSX.writeFile(wb, `product-tracker-${ts}.xlsx`);
+  }
+  toast(`Exported ${rows.length} records`);
+}
+
+/* ========== IMPORT ========== */
+function handleImport(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try {
+      const wb = XLSX.read(ev.target.result, { type: 'binary' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      if (!rows.length) { toast('No rows found in file', 'error'); return; }
+      const dd = getDropdowns();
+      const items = getItems();
+      let imported = 0, skipped = 0;
+      let nextId = items.length ? Math.max(...items.map(x => x.id)) + 1 : 1;
+      const newDD = JSON.parse(JSON.stringify(dd));
+      rows.forEach(r => {
+        const enh = String(r['Enhancement'] || r['enhancement'] || '').trim();
+        if (!enh) { skipped++; return; }
+        const platform = String(r['Platform'] || '').trim() || (dd.Platform[0] || '');
+        const owner = String(r['Owner'] || '').trim() || (dd.Owner[0] || '');
+        const status = String(r['Status'] || '').trim() || (dd.Status[0] || 'Open');
+        const severity = String(r['Severity'] || '').trim() || (dd.Severity[0] || 'Medium');
+        const priority = String(r['Priority'] || '').trim() || (dd.Priority[0] || 'P2');
+        // auto-add unknown dropdown values
+        [['Platform', platform], ['Owner', owner], ['Status', status], ['Severity', severity], ['Priority', priority]].forEach(([cat, val]) => {
+          if (val && !newDD[cat].some(v => v.toLowerCase() === val.toLowerCase())) newDD[cat].push(val);
+        });
+        const sd = parseDate(r['Start Date']);
+        const ed = parseDate(r['End Date']);
+        items.push({
+          id: nextId++,
+          enhancement: enh,
+          description: String(r['Description'] || '').trim(),
+          platform, owner, status, severity, priority,
+          startDate: sd || new Date().toISOString().slice(0,10),
+          endDate: ed || '',
+          revenueLinked: String(r['Revenue Linked'] || 'No').trim() === 'Yes' ? 'Yes' : 'No',
+          ticketRef: String(r['Ticket Reference'] || '').trim(),
+          remarks: String(r['Remarks'] || '').trim()
+        });
+        imported++;
+      });
+      setDropdowns(newDD);
+      setItems(items);
+      populateAllDropdowns();
+      renderTable();
+      toast(`Imported ${imported} record${imported !== 1 ? 's' : ''}${skipped ? `, skipped ${skipped}` : ''}`);
+    } catch (err) {
+      toast('Failed to read file. Make sure it matches the export format.', 'error');
+      console.error(err);
+    }
+  };
+  reader.readAsBinaryString(file);
+  e.target.value = '';
+}
+function parseDate(v) {
+  if (!v) return '';
+  if (v instanceof Date) return v.toISOString().slice(0,10);
+  // Excel serial
+  if (typeof v === 'number') {
+    const d = XLSX.SSF.parse_date_code(v);
+    if (d) return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;
+  }
+  const s = String(v).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const dt = new Date(s);
+  if (!isNaN(dt)) return dt.toISOString().slice(0,10);
+  return '';
+}
+
+/* ========== MODAL HELPERS ========== */
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+function resetFilters() {
+  ['filterPlatform','filterOwner','filterStatus','filterSeverity','filterPriority','filterRevenue'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('searchInput').value = '';
+  renderTable();
+}
+
+
+/* ========== OVERRIDES: ROLE-AWARE DASHBOARD, DYNAMIC COLUMNS, CUSTOM FIELDS ========== */
+function renderCustomFields(it) {
+  const wrap = document.getElementById('customFieldsWrap');
+  if (!wrap) return;
+  const customCols = getConfig().columns.filter(c => !c.builtin);
+  if (!customCols.length) { wrap.innerHTML = ''; return; }
+  wrap.innerHTML = '<h3 style="margin:6px 0 10px; font-size:14px; color:var(--pl-green-dark);">Custom Fields</h3>' + customCols.map(c => `
+    <div class="form-group">
+      <label>${escapeHtml(c.label)}</label>
+      <input type="text" class="custom-field-input" data-key="${escapeHtml(c.key)}" value="${escapeHtml((it && it.custom && it.custom[c.key]) || '')}" maxlength="200"/>
+    </div>`).join('');
+}
+function openItemModal(id) {
+  if (!canWrite()) { toast('External users have read-only access', 'error'); return; }
+  populateAllDropdowns();
+  document.getElementById('itemForm').reset();
+  document.getElementById('itemId').value = '';
+  document.getElementById('itemModalTitle').textContent = id ? 'Edit Enhancement' : 'New Enhancement';
+  let it = null;
+  if (id) {
+    it = getItems().find(x => x.id === id);
+    if (!it) return;
+    document.getElementById('itemId').value = it.id;
+    document.getElementById('itemEnhancement').value = it.enhancement;
+    document.getElementById('itemDescription').value = it.description || '';
+    document.getElementById('itemPlatform').value = it.platform;
+    document.getElementById('itemOwner').value = it.owner;
+    document.getElementById('itemStartDate').value = it.startDate;
+    document.getElementById('itemEndDate').value = it.endDate || '';
+    document.getElementById('itemStatus').value = it.status;
+    document.getElementById('itemRevenue').value = it.revenueLinked;
+    document.getElementById('itemSeverity').value = it.severity;
+    document.getElementById('itemPriority').value = it.priority;
+    document.getElementById('itemTicket').value = it.ticketRef || '';
+    document.getElementById('itemRemarks').value = it.remarks || '';
+  } else {
+    document.getElementById('itemStartDate').value = new Date().toISOString().slice(0, 10);
+  }
+  renderCustomFields(it);
+  document.getElementById('itemModal').classList.add('show');
+}
+function saveItem() {
+  if (!canWrite()) { toast('External users have read-only access', 'error'); return; }
+  const id = document.getElementById('itemId').value;
+  const custom = {};
+  document.querySelectorAll('.custom-field-input').forEach(el => custom[el.dataset.key] = el.value.trim());
+  const data = {
+    enhancement: document.getElementById('itemEnhancement').value.trim(),
+    description: document.getElementById('itemDescription').value.trim(),
+    platform: document.getElementById('itemPlatform').value,
+    owner: document.getElementById('itemOwner').value,
+    startDate: document.getElementById('itemStartDate').value,
+    endDate: document.getElementById('itemEndDate').value,
+    status: document.getElementById('itemStatus').value,
+    revenueLinked: document.getElementById('itemRevenue').value,
+    severity: document.getElementById('itemSeverity').value,
+    priority: document.getElementById('itemPriority').value,
+    ticketRef: document.getElementById('itemTicket').value.trim(),
+    remarks: document.getElementById('itemRemarks').value.trim(),
+    custom
+  };
+  if (!data.enhancement) { toast('Enhancement title is required', 'error'); return; }
+  if (!data.startDate) { toast('Start date is required', 'error'); return; }
+  if (data.endDate && data.endDate < data.startDate) { toast('End date cannot be before start date', 'error'); return; }
+  const items = getItems();
+  if (id) {
+    const idx = items.findIndex(x => x.id == id);
+    if (idx > -1) items[idx] = { ...items[idx], ...data, custom: { ...(items[idx].custom || {}), ...custom } };
+    toast('Enhancement updated');
+  } else {
+    const newId = items.length ? Math.max(...items.map(x => x.id)) + 1 : 1;
+    items.push({ id: newId, ...data });
+    toast('Enhancement added');
+  }
+  setItems(items);
+  closeModal('itemModal');
+  renderTable();
+}
+function deleteItem(id) {
+  if (!canWrite()) { toast('External users have read-only access', 'error'); return; }
+  openConfirm('Delete enhancement?', 'This action cannot be undone.', () => {
+    setItems(getItems().filter(x => x.id !== id));
+    renderTable();
+    toast('Enhancement deleted');
+  });
+}
+function renderTable() {
+  const all = getItems();
+  const filtered = applyFilters(all);
+  const tbody = document.getElementById('trackerBody');
+  const empty = document.getElementById('emptyState');
+  const cols = visibleColumns();
+  document.getElementById('trackerHead').innerHTML = '<tr>' + cols.map(c => `<th>${escapeHtml(c.label)}</th>`).join('') + '</tr>';
+  document.getElementById('trackerTable').style.minWidth = Math.max(900, cols.length * 120) + 'px';
+  tbody.innerHTML = '';
+  if (filtered.length === 0) {
+    empty.style.display = 'block';
+    document.getElementById('trackerTable').style.display = 'none';
+  } else {
+    empty.style.display = 'none';
+    document.getElementById('trackerTable').style.display = '';
+  }
+  filtered.forEach((it, idx) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = cols.map(c => `<td>${columnValue(it, c, idx)}</td>`).join('');
+    tbody.appendChild(tr);
+  });
+  renderKPIs(all, filtered);
+}
+function renderKPIs(all, filtered) {
+  const row = document.getElementById('kpiRow');
+  const open = filtered.filter(i => i.status === 'Open').length;
+  const inProg = filtered.filter(i => i.status === 'In Progress').length;
+  const blocked = filtered.filter(i => i.status === 'Blocked').length;
+  const done = filtered.filter(i => i.status === 'Done').length;
+  const critical = filtered.filter(i => i.severity === 'Critical').length;
+  const revLinked = filtered.filter(i => i.revenueLinked === 'Yes').length;
+  if (isExternal()) {
+    row.innerHTML = `
+      <div class="kpi-card"><div class="kpi-label">Visible Records</div><div class="kpi-value">${filtered.length}</div><div class="kpi-sub">admin configured view</div></div>
+      <div class="kpi-card accent-info"><div class="kpi-label">Open</div><div class="kpi-value">${open}</div><div class="kpi-sub">visible to partner</div></div>
+      <div class="kpi-card accent-warn"><div class="kpi-label">In Progress</div><div class="kpi-value">${inProg}</div><div class="kpi-sub">work underway</div></div>
+      <div class="kpi-card accent-green"><div class="kpi-label">Done</div><div class="kpi-value">${done}</div><div class="kpi-sub">completed items</div></div>`;
+    return;
+  }
+  row.innerHTML = `
+    <div class="kpi-card"><div class="kpi-label">Total Records</div><div class="kpi-value">${filtered.length}</div><div class="kpi-sub">of ${all.length} total</div></div>
+    <div class="kpi-card accent-info"><div class="kpi-label">Open</div><div class="kpi-value">${open}</div><div class="kpi-sub">awaiting action</div></div>
+    <div class="kpi-card accent-warn"><div class="kpi-label">In Progress</div><div class="kpi-value">${inProg}</div><div class="kpi-sub">actively worked</div></div>
+    <div class="kpi-card accent-danger"><div class="kpi-label">Blocked</div><div class="kpi-value">${blocked}</div><div class="kpi-sub">needs attention</div></div>
+    <div class="kpi-card accent-green"><div class="kpi-label">Done</div><div class="kpi-value">${done}</div><div class="kpi-sub">completed</div></div>
+    <div class="kpi-card accent-danger"><div class="kpi-label">Critical Severity</div><div class="kpi-value">${critical}</div><div class="kpi-sub">high impact</div></div>
+    <div class="kpi-card accent-green"><div class="kpi-label">Revenue Linked</div><div class="kpi-value">${revLinked}</div><div class="kpi-sub">money items</div></div>`;
+}
+function openColumnManager() {
+  if (!isAdmin()) { toast('Only admins can manage views and columns', 'error'); return; }
+  renderColumnsList();
+  document.getElementById('externalExportAllowed').checked = !!getConfig().externalExportAllowed;
+  document.getElementById('columnsModal').classList.add('show');
+}
+function renderColumnsList() {
+  const list = document.getElementById('columnsList');
+  const cfg = getConfig();
+  list.innerHTML = cfg.columns.map((c, i) => `
+    <div class="column-row columns-grid">
+      <input type="text" value="${escapeHtml(c.label)}" onchange="renameColumn(${i}, this.value)" />
+      <label class="view-chip"><input type="checkbox" ${c.internal ? 'checked' : ''} onchange="toggleColumnView(${i}, 'internal', this.checked)"/> Show</label>
+      <label class="view-chip"><input type="checkbox" ${c.external ? 'checked' : ''} onchange="toggleColumnView(${i}, 'external', this.checked)"/> Show</label>
+      <span>${c.builtin ? 'Built-in' : 'Custom'}</span>
+      <span style="text-align:right;">${c.builtin ? '<span class="hint-text">Rename / hide only</span>' : `<button class="icon-btn danger" onclick="deleteCustomColumn(${i})">🗑</button>`}</span>
+    </div>`).join('');
+}
+function renameColumn(i, label) {
+  const cfg = getConfig();
+  const trimmed = label.trim();
+  if (!trimmed) { toast('Column name cannot be empty', 'error'); renderColumnsList(); return; }
+  cfg.columns[i].label = trimmed;
+  setConfig(cfg); renderColumnsList(); renderTable(); toast('Column updated');
+}
+function toggleColumnView(i, view, checked) {
+  const cfg = getConfig();
+  cfg.columns[i][view] = checked;
+  if (cfg.columns[i].key === 'actions') cfg.columns[i].external = false;
+  setConfig(cfg); renderColumnsList(); renderTable();
+}
+function addCustomColumn() {
+  const input = document.getElementById('newColumnLabel');
+  const label = input.value.trim();
+  if (!label) { toast('Enter a column name', 'error'); return; }
+  const cfg = getConfig();
+  const key = 'custom_' + Date.now();
+  cfg.columns.splice(Math.max(cfg.columns.length - 1, 0), 0, { key, label, builtin: false, internal: true, external: false });
+  setConfig(cfg); input.value = ''; renderColumnsList(); renderTable(); toast('Custom column added');
+}
+function deleteCustomColumn(i) {
+  const cfg = getConfig();
+  const col = cfg.columns[i];
+  if (!col || col.builtin) return;
+  openConfirm('Delete custom column?', `Column "${col.label}" will be removed from all records.`, () => {
+    cfg.columns.splice(i, 1);
+    setConfig(cfg);
+    const items = getItems().map(it => { if (it.custom) delete it.custom[col.key]; return it; });
+    setItems(items); renderColumnsList(); renderTable(); toast('Custom column deleted');
+  });
+}
+function saveExternalExportSetting() {
+  const cfg = getConfig();
+  cfg.externalExportAllowed = document.getElementById('externalExportAllowed').checked;
+  setConfig(cfg); showApp(); toast('External export setting updated');
+}
+function renderUsers() {
+  const tbody = document.getElementById('usersBody');
+  tbody.innerHTML = '';
+  getUsers().forEach(u => {
+    const tr = document.createElement('tr');
+    const cls = u.role === 'admin' ? 'pill-sev-high' : u.role === 'external' ? 'pill-hold' : 'pill-open';
+    tr.innerHTML = `
+      <td>${escapeHtml(u.name)}</td>
+      <td>${escapeHtml(u.email)}</td>
+      <td><span class="pill ${cls}">${roleLabel(u.role)}</span></td>
+      <td style="text-align:right;"><button class="icon-btn" title="Reset Password" onclick="resetUserPwd(${u.id})">🔑</button><button class="icon-btn danger" title="Delete" onclick="deleteUser(${u.id})">🗑</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+function addUser() {
+  const name = document.getElementById('newUserName').value.trim();
+  const email = document.getElementById('newUserEmail').value.trim().toLowerCase();
+  const pwd = document.getElementById('newUserPwd').value;
+  const role = document.getElementById('newUserRole').value;
+  if (!name || !email || !pwd) { toast('All fields are required', 'error'); return; }
+  if (!/^\S+@\S+\.\S+$/.test(email)) { toast('Enter a valid email', 'error'); return; }
+  const users = getUsers();
+  if (users.some(u => u.email.toLowerCase() === email)) { toast('Email already exists', 'error'); return; }
+  const newId = users.length ? Math.max(...users.map(u => u.id)) + 1 : 1;
+  users.push({ id: newId, name, email, password: pwd, role });
+  setUsers(users);
+  document.getElementById('newUserName').value = '';
+  document.getElementById('newUserEmail').value = '';
+  document.getElementById('newUserPwd').value = '';
+  renderUsers();
+  toast(`${roleLabel(role)} ${name} added`);
+}
+function exportData(fmt) {
+  if (isExternal() && !getConfig().externalExportAllowed) { toast('Export is disabled for external users', 'error'); return; }
+  const items = applyFilters(getItems());
+  const cols = visibleColumns().filter(c => c.key !== 'actions');
+  const rows = items.map((it, i) => {
+    const row = {};
+    cols.forEach(c => {
+      if (c.key === 'sno') row[c.label] = i + 1;
+      else if (c.key === 'aging') row[c.label] = calcAging(it.startDate, it.endDate);
+      else if (c.builtin) row[c.label] = it[c.key] || '';
+      else row[c.label] = (it.custom && it.custom[c.key]) || '';
+    });
+    return row;
+  });
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Product Tracker');
+  const ts = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, fmt === 'csv' ? `pinelabs-amazon-product-tracker-${ts}.csv` : `pinelabs-amazon-product-tracker-${ts}.xlsx`, fmt === 'csv' ? { bookType: 'csv' } : undefined);
+  toast(`Exported ${rows.length} records`);
+}
+
+
+/* ========== SUBTASK EXTENSIONS ========== */
+const SUBTASKS_KEY = 'pl_pt_subtasks_v1';
+let currentEnhancementId = null;
+
+const BASE_SUBTASK_COLUMNS = [
+  { key: 'sno', label: 'S No.', builtin: true, internal: true, external: true },
+  { key: 'title', label: 'Subtask', builtin: true, internal: true, external: true },
+  { key: 'status', label: 'Status', builtin: true, internal: true, external: true },
+  { key: 'owner', label: 'Owner', builtin: true, internal: true, external: false },
+  { key: 'startDate', label: 'Start Date', builtin: true, internal: true, external: false },
+  { key: 'dueDate', label: 'Due Date', builtin: true, internal: true, external: true },
+  { key: 'remarks', label: 'Remarks', builtin: true, internal: true, external: true },
+  { key: 'actions', label: 'Actions', builtin: true, internal: true, external: false }
+];
+
+function getSubtasks() { return JSON.parse(localStorage.getItem(SUBTASKS_KEY) || '[]'); }
+function setSubtasks(v) { localStorage.setItem(SUBTASKS_KEY, JSON.stringify(v)); }
+function ensureSubtaskConfig() {
+  const cfg = getConfig();
+  if (!cfg.subtaskColumns) cfg.subtaskColumns = JSON.parse(JSON.stringify(BASE_SUBTASK_COLUMNS));
+  const byKey = Object.fromEntries((cfg.subtaskColumns || []).map(c => [c.key, c]));
+  BASE_SUBTASK_COLUMNS.forEach(c => { if (!byKey[c.key]) cfg.subtaskColumns.push(JSON.parse(JSON.stringify(c))); });
+  cfg.subtaskColumns = cfg.subtaskColumns.filter(c => c.key !== 'actions' || c.builtin);
+  setConfig(cfg);
+}
+function visibleSubtaskColumns() {
+  ensureSubtaskConfig();
+  const viewKey = isExternal() ? 'external' : 'internal';
+  return getConfig().subtaskColumns.filter(c => c[viewKey] && (c.key !== 'actions' || canWrite()));
+}
+function subtaskCount(enhancementId) {
+  return getSubtasks().filter(st => st.enhancementId === enhancementId).length;
+}
+
+const previousMigratePortalData = migratePortalData;
+migratePortalData = function() {
+  previousMigratePortalData();
+  ensureSubtaskConfig();
+  if (!localStorage.getItem(SUBTASKS_KEY)) {
+    const sample = [
+      { id: 1, enhancementId: 2, title: 'Define alert threshold rules', status: 'In Progress', owner: 'Karthikeyan', startDate: new Date().toISOString().slice(0,10), dueDate: '', remarks: 'Business rule draft in progress', custom: {} },
+      { id: 2, enhancementId: 2, title: 'Partner dashboard copy review', status: 'Open', owner: 'Nitin', startDate: '', dueDate: '', remarks: 'To be reviewed before release', custom: {} }
+    ];
+    setSubtasks(sample);
+  }
+};
+migratePortalData();
+
+const previousColumnValue = columnValue;
+columnValue = function(it, col, idx) {
+  if (col.key === 'enhancement') {
+    const count = subtaskCount(it.id);
+    return `<span class="enh-cell">${escapeHtml(it.enhancement)}</span><br/><a href="#" class="subtask-link" onclick="openSubtaskPage(${it.id}); return false;">View / link subtasks (${count})</a>`;
+  }
+  return previousColumnValue(it, col, idx);
+};
+
+function openSubtaskPage(enhancementId) {
+  currentEnhancementId = enhancementId;
+  const it = getItems().find(x => x.id === enhancementId);
+  if (!it) { toast('Enhancement not found', 'error'); return; }
+  document.getElementById('portalNote').style.display = 'none';
+  document.getElementById('kpiRow').style.display = 'none';
+  document.querySelector('.toolbar').style.display = 'none';
+  document.querySelector('.table-wrap').style.display = 'none';
+  document.getElementById('subtaskPage').style.display = 'block';
+  document.getElementById('subtaskEnhancementTitle').textContent = it.enhancement;
+  document.getElementById('subtaskEnhancementMeta').textContent = `${it.platform} · ${it.status} · Ticket: ${it.ticketRef || 'Not available'}`;
+  renderSubtasks();
+}
+function backToDashboard() {
+  currentEnhancementId = null;
+  document.getElementById('subtaskPage').style.display = 'none';
+  document.getElementById('portalNote').style.display = '';
+  document.getElementById('kpiRow').style.display = '';
+  document.querySelector('.toolbar').style.display = '';
+  document.querySelector('.table-wrap').style.display = '';
+  renderTable();
+}
+
+function subtaskValue(st, col, idx) {
+  switch (col.key) {
+    case 'sno': return idx + 1;
+    case 'title': return `<span class="enh-cell">${escapeHtml(st.title)}</span>`;
+    case 'status': return statusPill(st.status || 'Open');
+    case 'owner': return escapeHtml(st.owner || '');
+    case 'startDate': return st.startDate || '';
+    case 'dueDate': return st.dueDate || '<span style="color:#aaa;">—</span>';
+    case 'remarks': return `<span class="desc-cell">${escapeHtml(st.remarks || '')}</span>`;
+    case 'actions': return `<div class="row-actions"><button class="icon-btn" title="Edit" onclick="openSubtaskModal(${st.id})">✎</button><button class="icon-btn danger" title="Delete" onclick="deleteSubtask(${st.id})">🗑</button></div>`;
+    default: return escapeHtml((st.custom && st.custom[col.key]) || '');
+  }
+}
+function renderSubtasks() {
+  const rows = getSubtasks().filter(st => st.enhancementId === currentEnhancementId);
+  const cols = visibleSubtaskColumns();
+  const head = document.getElementById('subtaskHead');
+  const body = document.getElementById('subtaskBody');
+  const empty = document.getElementById('subtaskEmptyState');
+  head.innerHTML = '<tr>' + cols.map(c => `<th>${escapeHtml(c.label)}</th>`).join('') + '</tr>';
+  document.getElementById('subtaskTable').style.minWidth = Math.max(800, cols.length * 130) + 'px';
+  body.innerHTML = '';
+  if (!rows.length) { empty.style.display = 'block'; document.getElementById('subtaskTable').style.display = 'none'; return; }
+  empty.style.display = 'none'; document.getElementById('subtaskTable').style.display = '';
+  rows.forEach((st, idx) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = cols.map(c => `<td>${subtaskValue(st, c, idx)}</td>`).join('');
+    body.appendChild(tr);
+  });
+}
+
+function openSubtaskModal(id) {
+  if (!canWrite()) { toast('External users have read-only access', 'error'); return; }
+  if (!currentEnhancementId) { toast('Open an enhancement first', 'error'); return; }
+  populateAllDropdowns();
+  fillSelect(document.getElementById('subtaskStatus'), getDropdowns().Status, false);
+  fillSelect(document.getElementById('subtaskOwner'), getDropdowns().Owner, false);
+  document.getElementById('subtaskForm').reset();
+  document.getElementById('subtaskId').value = '';
+  renderSubtaskCustomFields();
+  document.getElementById('subtaskModalTitle').textContent = id ? 'Edit Subtask' : 'New Subtask';
+  if (id) {
+    const st = getSubtasks().find(x => x.id === id);
+    if (!st) return;
+    document.getElementById('subtaskId').value = st.id;
+    document.getElementById('subtaskTitle').value = st.title || '';
+    document.getElementById('subtaskStatus').value = st.status || 'Open';
+    document.getElementById('subtaskOwner').value = st.owner || '';
+    document.getElementById('subtaskStartDate').value = st.startDate || '';
+    document.getElementById('subtaskDueDate').value = st.dueDate || '';
+    document.getElementById('subtaskRemarks').value = st.remarks || '';
+    (getConfig().subtaskColumns || []).filter(c => !c.builtin).forEach(c => {
+      const el = document.getElementById('subtask_custom_' + c.key);
+      if (el) el.value = (st.custom && st.custom[c.key]) || '';
+    });
+  } else {
+    document.getElementById('subtaskStatus').value = 'Open';
+    document.getElementById('subtaskStartDate').value = new Date().toISOString().slice(0, 10);
+  }
+  document.getElementById('subtaskModal').classList.add('show');
+}
+function renderSubtaskCustomFields() {
+  ensureSubtaskConfig();
+  const wrap = document.getElementById('subtaskCustomFields');
+  const customCols = (getConfig().subtaskColumns || []).filter(c => !c.builtin);
+  wrap.innerHTML = customCols.map(c => `<div class="form-group"><label>${escapeHtml(c.label)}</label><input type="text" id="subtask_custom_${c.key}" maxlength="200"/></div>`).join('');
+}
+function saveSubtask() {
+  if (!canWrite()) { toast('External users have read-only access', 'error'); return; }
+  const title = document.getElementById('subtaskTitle').value.trim();
+  if (!title) { toast('Subtask title is required', 'error'); return; }
+  const id = document.getElementById('subtaskId').value;
+  const custom = {};
+  (getConfig().subtaskColumns || []).filter(c => !c.builtin).forEach(c => {
+    const el = document.getElementById('subtask_custom_' + c.key);
+    if (el) custom[c.key] = el.value.trim();
+  });
+  const data = {
+    enhancementId: currentEnhancementId,
+    title,
+    status: document.getElementById('subtaskStatus').value,
+    owner: document.getElementById('subtaskOwner').value,
+    startDate: document.getElementById('subtaskStartDate').value,
+    dueDate: document.getElementById('subtaskDueDate').value,
+    remarks: document.getElementById('subtaskRemarks').value.trim(),
+    custom
+  };
+  const rows = getSubtasks();
+  if (id) {
+    const ix = rows.findIndex(x => x.id == id);
+    if (ix > -1) rows[ix] = { ...rows[ix], ...data, custom: { ...(rows[ix].custom || {}), ...custom } };
+    toast('Subtask updated');
+  } else {
+    const newId = rows.length ? Math.max(...rows.map(x => x.id)) + 1 : 1;
+    rows.push({ id: newId, ...data });
+    toast('Subtask added');
+  }
+  setSubtasks(rows);
+  closeModal('subtaskModal');
+  renderSubtasks();
+}
+function deleteSubtask(id) {
+  if (!canWrite()) { toast('External users have read-only access', 'error'); return; }
+  openConfirm('Delete subtask?', 'This linked subtask will be removed from the enhancement.', () => {
+    setSubtasks(getSubtasks().filter(x => x.id !== id));
+    renderSubtasks();
+    renderTable();
+    toast('Subtask deleted');
+  });
+}
+
+const previousOpenColumnManager = openColumnManager;
+openColumnManager = function() {
+  if (!isAdmin()) { toast('Only admins can manage views and columns', 'error'); return; }
+  ensureSubtaskConfig();
+  renderColumnsList();
+  renderSubtaskColumnsList();
+  document.getElementById('externalExportAllowed').checked = !!getConfig().externalExportAllowed;
+  document.getElementById('columnsModal').classList.add('show');
+};
+function renderSubtaskColumnsList() {
+  ensureSubtaskConfig();
+  const list = document.getElementById('subtaskColumnsList');
+  if (!list) return;
+  const cfg = getConfig();
+  list.innerHTML = (cfg.subtaskColumns || []).map((c, i) => `
+    <div class="column-row columns-grid">
+      <input type="text" value="${escapeHtml(c.label)}" onchange="renameSubtaskColumn(${i}, this.value)" />
+      <label class="view-chip"><input type="checkbox" ${c.internal ? 'checked' : ''} onchange="toggleSubtaskColumnView(${i}, 'internal', this.checked)"/> Show</label>
+      <label class="view-chip"><input type="checkbox" ${c.external ? 'checked' : ''} onchange="toggleSubtaskColumnView(${i}, 'external', this.checked)"/> Show</label>
+      <span>${c.builtin ? 'Built-in' : 'Custom'}</span>
+      <span style="text-align:right;">${c.builtin ? '<span class="hint-text">Rename / hide only</span>' : `<button class="icon-btn danger" onclick="deleteSubtaskColumn(${i})">🗑</button>`}</span>
+    </div>`).join('');
+}
+function renameSubtaskColumn(i, label) {
+  const cfg = getConfig();
+  const trimmed = label.trim();
+  if (!trimmed) { toast('Column name cannot be empty', 'error'); renderSubtaskColumnsList(); return; }
+  cfg.subtaskColumns[i].label = trimmed;
+  setConfig(cfg); renderSubtaskColumnsList(); if (currentEnhancementId) renderSubtasks(); toast('Subtask column updated');
+}
+function toggleSubtaskColumnView(i, view, checked) {
+  const cfg = getConfig();
+  cfg.subtaskColumns[i][view] = checked;
+  if (cfg.subtaskColumns[i].key === 'actions') cfg.subtaskColumns[i].external = false;
+  setConfig(cfg); renderSubtaskColumnsList(); if (currentEnhancementId) renderSubtasks();
+}
+function addSubtaskColumn() {
+  const input = document.getElementById('newSubtaskColumnLabel');
+  if (!input) { toast('Subtask column section is not available. Please refresh the page.', 'error'); return; }
+  const label = input.value.trim();
+  if (!label) { toast('Enter a subtask column name', 'error'); return; }
+  const cfg = getConfig();
+  const key = 'subcustom_' + Date.now();
+  cfg.subtaskColumns.splice(Math.max(cfg.subtaskColumns.length - 1, 0), 0, { key, label, builtin: false, internal: true, external: false });
+  setConfig(cfg); input.value = ''; renderSubtaskColumnsList(); if (currentEnhancementId) renderSubtasks(); toast('Subtask column added');
+}
+function deleteSubtaskColumn(i) {
+  const cfg = getConfig();
+  const col = cfg.subtaskColumns[i];
+  if (!col || col.builtin) return;
+  openConfirm('Delete subtask column?', `Column "${col.label}" will be removed from all subtasks.`, () => {
+    cfg.subtaskColumns.splice(i, 1);
+    setConfig(cfg);
+    const rows = getSubtasks().map(st => { if (st.custom) delete st.custom[col.key]; return st; });
+    setSubtasks(rows); renderSubtaskColumnsList(); if (currentEnhancementId) renderSubtasks(); toast('Subtask column deleted');
+  });
+}
+function exportSubtasks(fmt) {
+  if (isExternal() && !getConfig().externalExportAllowed) { toast('Export is disabled for external users', 'error'); return; }
+  const rows = getSubtasks().filter(st => st.enhancementId === currentEnhancementId);
+  const cols = visibleSubtaskColumns().filter(c => c.key !== 'actions');
+  const out = rows.map((st, i) => {
+    const row = {};
+    cols.forEach(c => { row[c.label] = c.key === 'sno' ? i + 1 : (c.builtin ? (st[c.key] || '') : ((st.custom && st.custom[c.key]) || '')); });
+    return row;
+  });
+  const ws = XLSX.utils.json_to_sheet(out);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Subtasks');
+  const ts = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, fmt === 'csv' ? `pinelabs-subtasks-${ts}.csv` : `pinelabs-subtasks-${ts}.xlsx`, fmt === 'csv' ? { bookType: 'csv' } : undefined);
+  toast(`Exported ${out.length} subtasks`);
+}
+
+const previousShowAppForSubtasks = showApp;
+showApp = function() {
+  previousShowAppForSubtasks();
+  ensureSubtaskConfig();
+  if (document.getElementById('subtaskPage')) document.getElementById('subtaskPage').style.display = 'none';
+};
+
+
+/* ========== SUBTASK ACCESS CONTROLS ========== */
+function ensureSubtaskAccessConfig() {
+  const cfg = getConfig();
+  if (!cfg.subtaskAccess) cfg.subtaskAccess = { internal: true, external: false };
+  if (typeof cfg.subtaskAccess.internal !== 'boolean') cfg.subtaskAccess.internal = true;
+  if (typeof cfg.subtaskAccess.external !== 'boolean') cfg.subtaskAccess.external = false;
+  setConfig(cfg);
+}
+function canViewSubtasks() {
+  if (isAdmin()) return true;
+  ensureSubtaskAccessConfig();
+  const access = getConfig().subtaskAccess || {};
+  if (isExternal()) return !!access.external;
+  return !!access.internal;
+}
+function saveSubtaskAccessSettings() {
+  const cfg = getConfig();
+  cfg.subtaskAccess = {
+    internal: !!document.getElementById('subtaskAccessInternal')?.checked,
+    external: !!document.getElementById('subtaskAccessExternal')?.checked
+  };
+  setConfig(cfg);
+  renderTable();
+  toast('Subtask access settings updated');
+}
+const previousOpenColumnManagerForAccess = openColumnManager;
+openColumnManager = function() {
+  previousOpenColumnManagerForAccess();
+  ensureSubtaskAccessConfig();
+  const access = getConfig().subtaskAccess || {};
+  const internalEl = document.getElementById('subtaskAccessInternal');
+  const externalEl = document.getElementById('subtaskAccessExternal');
+  if (internalEl) internalEl.checked = !!access.internal;
+  if (externalEl) externalEl.checked = !!access.external;
+};
+const previousOpenSubtaskPageForAccess = openSubtaskPage;
+openSubtaskPage = function(enhancementId) {
+  if (!canViewSubtasks()) {
+    toast('Subtask access is not enabled for your user type', 'error');
+    return;
+  }
+  previousOpenSubtaskPageForAccess(enhancementId);
+};
+const previousColumnValueForAccess = columnValue;
+columnValue = function(it, col, idx) {
+  if (col.key === 'enhancement') {
+    if (!canViewSubtasks()) return `<span class="enh-cell">${escapeHtml(it.enhancement)}</span>`;
+    const count = subtaskCount(it.id);
+    return `<span class="enh-cell">${escapeHtml(it.enhancement)}</span><br/><a href="#" class="subtask-link" onclick="openSubtaskPage(${it.id}); return false;">View / link subtasks (${count})</a>`;
+  }
+  return previousColumnValueForAccess(it, col, idx);
+};
+const previousShowAppForSubtaskAccess = showApp;
+showApp = function() {
+  ensureSubtaskAccessConfig();
+  previousShowAppForSubtaskAccess();
+};
+
+
+/* ========== VISIBILITY ACCESS MODEL EXTENSIONS ========== */
+function visibilityPill(v) {
+  const val = v === 'Internal' ? 'Internal' : 'External';
+  return `<span class="pill ${val === 'Internal' ? 'pill-sev-high' : 'pill-yes'}">${val}</span>`;
+}
+function ensureVisibilityModel() {
+  const cfg = getConfig();
+  if (!cfg.columns) cfg.columns = [];
+  if (!cfg.columns.some(c => c.key === 'visibility')) {
+    const ix = Math.max(2, cfg.columns.findIndex(c => c.key === 'description'));
+    cfg.columns.splice(ix, 0, { key: 'visibility', label: 'Visibility', builtin: true, systemMandatory: true, internal: true, external: true });
+  }
+  cfg.columns.forEach(c => {
+    if (c.key === 'visibility') { c.label = c.label || 'Visibility'; c.builtin = true; c.systemMandatory = true; c.internal = true; c.external = true; }
+  });
+  if (!cfg.subtaskColumns) cfg.subtaskColumns = [];
+  if (!cfg.subtaskColumns.some(c => c.key === 'visibility')) {
+    const ix = Math.max(2, cfg.subtaskColumns.findIndex(c => c.key === 'status'));
+    cfg.subtaskColumns.splice(ix, 0, { key: 'visibility', label: 'Visibility', builtin: true, systemMandatory: true, internal: true, external: true });
+  }
+  cfg.subtaskColumns.forEach(c => {
+    if (c.key === 'visibility') { c.label = c.label || 'Visibility'; c.builtin = true; c.systemMandatory = true; c.internal = true; c.external = true; }
+  });
+  setConfig(cfg);
+  setItems(getItems().map(it => ({ ...it, visibility: it.visibility === 'Internal' ? 'Internal' : 'External' })));
+  setSubtasks(getSubtasks().map(st => ({ ...st, visibility: st.visibility === 'Internal' ? 'Internal' : 'External' })));
+}
+function injectVisibilityControls() {
+  const revenueFilter = document.getElementById('filterRevenue');
+  if (revenueFilter && !document.getElementById('filterVisibility')) {
+    const wrap = document.createElement('div');
+    wrap.className = 'filter-group visibility-filter-wrap';
+    wrap.innerHTML = `<label>Visibility</label><select id="filterVisibility"><option value="">All</option><option value="External">External</option><option value="Internal">Internal</option></select>`;
+    revenueFilter.closest('.filter-group').after(wrap);
+  }
+  const itemRevenue = document.getElementById('itemRevenue');
+  if (itemRevenue && !document.getElementById('itemVisibility')) {
+    const wrap = document.createElement('div');
+    wrap.className = 'form-group';
+    wrap.innerHTML = `<label>Visibility *</label><select id="itemVisibility" required><option value="External">External</option><option value="Internal">Internal</option></select><div class="hint-text">External users can view only External rows.</div>`;
+    itemRevenue.closest('.form-group').after(wrap);
+  }
+  const subtaskStatus = document.getElementById('subtaskStatus');
+  if (subtaskStatus && !document.getElementById('subtaskVisibility')) {
+    const wrap = document.createElement('div');
+    wrap.className = 'form-group';
+    wrap.innerHTML = `<label>Visibility *</label><select id="subtaskVisibility" required><option value="External">External</option><option value="Internal">Internal</option></select><div class="hint-text">Defaults to the parent enhancement visibility.</div>`;
+    subtaskStatus.closest('.form-group').after(wrap);
+  }
+  const vf = document.getElementById('filterVisibility');
+  if (vf) {
+    const wrap = vf.closest('.filter-group');
+    if (isExternal()) { vf.value = 'External'; if (wrap) wrap.style.display = 'none'; }
+    else if (wrap) wrap.style.display = '';
+  }
+}
+const _visibilityPreviousVisibleColumns = visibleColumns;
+visibleColumns = function() {
+  ensureVisibilityModel();
+  const cols = _visibilityPreviousVisibleColumns();
+  const cfg = getConfig();
+  const vcol = (cfg.columns || []).find(c => c.key === 'visibility');
+  if (vcol && !cols.some(c => c.key === 'visibility')) cols.splice(Math.min(2, cols.length), 0, vcol);
+  return cols;
+};
+const _visibilityPreviousVisibleSubtaskColumns = visibleSubtaskColumns;
+visibleSubtaskColumns = function() {
+  ensureVisibilityModel();
+  const cols = _visibilityPreviousVisibleSubtaskColumns();
+  const cfg = getConfig();
+  const vcol = (cfg.subtaskColumns || []).find(c => c.key === 'visibility');
+  if (vcol && !cols.some(c => c.key === 'visibility')) cols.splice(Math.min(2, cols.length), 0, vcol);
+  return cols;
+};
+const _visibilityPreviousColumnValue = columnValue;
+columnValue = function(it, col, idx) {
+  if (col.key === 'visibility') return visibilityPill(it.visibility);
+  return _visibilityPreviousColumnValue(it, col, idx);
+};
+const _visibilityPreviousSubtaskValue = subtaskValue;
+subtaskValue = function(st, col, idx) {
+  if (col.key === 'visibility') return visibilityPill(st.visibility);
+  return _visibilityPreviousSubtaskValue(st, col, idx);
+};
+const _visibilityPreviousGetFilters = getFilters;
+getFilters = function() {
+  const f = _visibilityPreviousGetFilters();
+  const v = document.getElementById('filterVisibility');
+  f.visibility = isExternal() ? 'External' : (v ? v.value : '');
+  return f;
+};
+const _visibilityPreviousApplyFilters = applyFilters;
+applyFilters = function(items) {
+  const scoped = isExternal() ? items.filter(it => (it.visibility || 'External') === 'External') : items;
+  const filtered = _visibilityPreviousApplyFilters(scoped);
+  const f = getFilters();
+  if (!isExternal() && f.visibility) return filtered.filter(it => (it.visibility || 'External') === f.visibility);
+  return filtered;
+};
+const _visibilityPreviousOpenItemModal = openItemModal;
+openItemModal = function(id) {
+  injectVisibilityControls();
+  _visibilityPreviousOpenItemModal(id);
+  injectVisibilityControls();
+  const el = document.getElementById('itemVisibility');
+  if (el) {
+    const it = id ? getItems().find(x => x.id === id) : null;
+    el.value = it && it.visibility === 'Internal' ? 'Internal' : 'External';
+  }
+};
+const _visibilityPreviousSaveItem = saveItem;
+saveItem = function() {
+  const id = document.getElementById('itemId')?.value;
+  const v = document.getElementById('itemVisibility')?.value || 'External';
+  _visibilityPreviousSaveItem();
+  const items = getItems();
+  if (id) {
+    const it = items.find(x => String(x.id) === String(id));
+    if (it) it.visibility = v === 'Internal' ? 'Internal' : 'External';
+  } else if (items.length) {
+    const maxId = Math.max(...items.map(x => x.id));
+    const it = items.find(x => x.id === maxId);
+    if (it && !it.visibility) it.visibility = v === 'Internal' ? 'Internal' : 'External';
+  }
+  setItems(items);
+  renderTable();
+};
+const _visibilityPreviousOpenSubtaskModal = openSubtaskModal;
+openSubtaskModal = function(id) {
+  injectVisibilityControls();
+  _visibilityPreviousOpenSubtaskModal(id);
+  injectVisibilityControls();
+  const el = document.getElementById('subtaskVisibility');
+  if (el) {
+    const st = id ? getSubtasks().find(x => x.id === id) : null;
+    const parent = getItems().find(x => x.id === currentEnhancementId);
+    el.value = st ? (st.visibility === 'Internal' ? 'Internal' : 'External') : ((parent && parent.visibility === 'Internal') ? 'Internal' : 'External');
+  }
+};
+const _visibilityPreviousSaveSubtask = saveSubtask;
+saveSubtask = function() {
+  const id = document.getElementById('subtaskId')?.value;
+  const parent = getItems().find(x => x.id === currentEnhancementId);
+  const fallback = parent && parent.visibility === 'Internal' ? 'Internal' : 'External';
+  const v = document.getElementById('subtaskVisibility')?.value || fallback;
+  _visibilityPreviousSaveSubtask();
+  const rows = getSubtasks();
+  if (id) {
+    const st = rows.find(x => String(x.id) === String(id));
+    if (st) st.visibility = v === 'Internal' ? 'Internal' : 'External';
+  } else if (rows.length) {
+    const maxId = Math.max(...rows.map(x => x.id));
+    const st = rows.find(x => x.id === maxId);
+    if (st && st.enhancementId === currentEnhancementId) st.visibility = v === 'Internal' ? 'Internal' : 'External';
+  }
+  setSubtasks(rows);
+  renderSubtasks();
+};
+const _visibilityPreviousSubtaskCount = subtaskCount;
+subtaskCount = function(enhancementId) {
+  const rows = getSubtasks().filter(st => st.enhancementId === enhancementId);
+  return isExternal() ? rows.filter(st => (st.visibility || 'External') === 'External').length : rows.length;
+};
+const _visibilityPreviousRenderSubtasks = renderSubtasks;
+renderSubtasks = function() {
+  if (!isExternal()) return _visibilityPreviousRenderSubtasks();
+  const originalGetSubtasks = getSubtasks;
+  getSubtasks = function() { return originalGetSubtasks().filter(st => (st.visibility || 'External') === 'External'); };
+  try { _visibilityPreviousRenderSubtasks(); } finally { getSubtasks = originalGetSubtasks; }
+};
+const _visibilityPreviousExportSubtasks = exportSubtasks;
+exportSubtasks = function(fmt) {
+  if (!isExternal()) return _visibilityPreviousExportSubtasks(fmt);
+  const originalGetSubtasks = getSubtasks;
+  getSubtasks = function() { return originalGetSubtasks().filter(st => (st.visibility || 'External') === 'External'); };
+  try { _visibilityPreviousExportSubtasks(fmt); } finally { getSubtasks = originalGetSubtasks; }
+};
+const _visibilityPreviousRenderColumnsList = renderColumnsList;
+renderColumnsList = function() {
+  ensureVisibilityModel();
+  _visibilityPreviousRenderColumnsList();
+  document.querySelectorAll('#columnsList .column-row').forEach(row => {
+    const input = row.querySelector('input[type="text"]');
+    if (input && input.value.trim().toLowerCase() === 'visibility') {
+      row.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = true; cb.disabled = true; });
+      const action = row.querySelector('span[style*="text-align:right"]');
+      if (action) action.innerHTML = '<span class="hint-text">System mandatory</span>';
+    }
+  });
+};
+const _visibilityPreviousRenderSubtaskColumnsList = renderSubtaskColumnsList;
+renderSubtaskColumnsList = function() {
+  ensureVisibilityModel();
+  _visibilityPreviousRenderSubtaskColumnsList();
+  document.querySelectorAll('#subtaskColumnsList .column-row').forEach(row => {
+    const input = row.querySelector('input[type="text"]');
+    if (input && input.value.trim().toLowerCase() === 'visibility') {
+      row.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = true; cb.disabled = true; });
+      const action = row.querySelector('span[style*="text-align:right"]');
+      if (action) action.innerHTML = '<span class="hint-text">System mandatory</span>';
+    }
+  });
+};
+const _visibilityPreviousToggleColumnView = toggleColumnView;
+toggleColumnView = function(i, view, checked) {
+  const cfg = getConfig();
+  if (cfg.columns && cfg.columns[i] && cfg.columns[i].key === 'visibility') { cfg.columns[i].internal = true; cfg.columns[i].external = true; setConfig(cfg); renderColumnsList(); return; }
+  _visibilityPreviousToggleColumnView(i, view, checked);
+};
+const _visibilityPreviousToggleSubtaskColumnView = toggleSubtaskColumnView;
+toggleSubtaskColumnView = function(i, view, checked) {
+  const cfg = getConfig();
+  if (cfg.subtaskColumns && cfg.subtaskColumns[i] && cfg.subtaskColumns[i].key === 'visibility') { cfg.subtaskColumns[i].internal = true; cfg.subtaskColumns[i].external = true; setConfig(cfg); renderSubtaskColumnsList(); return; }
+  _visibilityPreviousToggleSubtaskColumnView(i, view, checked);
+};
+const _visibilityPreviousExportData = exportData;
+exportData = function(fmt) {
+  ensureVisibilityModel();
+  return _visibilityPreviousExportData(fmt);
+};
+const _visibilityPreviousShowApp = showApp;
+showApp = function() {
+  ensureVisibilityModel();
+  injectVisibilityControls();
+  _visibilityPreviousShowApp();
+  injectVisibilityControls();
+};
+const _visibilityPreviousBindEvents = bindEvents;
+bindEvents = function() {
+  _visibilityPreviousBindEvents();
+  injectVisibilityControls();
+  const vf = document.getElementById('filterVisibility');
+  if (vf) vf.addEventListener('input', renderTable);
+};
+ensureVisibilityModel();
+injectVisibilityControls();
+
+
+
+/* ========== SUPABASE POC INTEGRATION ========== */
+const SUPABASE_URL = 'https://xeoigqpfaqitzszwhvao.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhlb2lncXBmYXFpdHpzendodmFvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0MzQwNjIsImV4cCI6MjA5NzAxMDA2Mn0.DQyG28w8O6GxYoHPe7mEQKfibAtAjiQo__fH8yiw6z4';
+const SUPABASE_TABLE = 'tracker_items';
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let SUPABASE_ITEMS_CACHE = [];
+
+function mapFromSupabase(row) {
+  return {
+    id: row.id,
+    enhancement: row.enhancement || '',
+    description: row.description || '',
+    platform: row.platform || '',
+    owner: row.owner || '',
+    status: row.status || 'Open',
+    priority: row.priority || 'P2',
+    visibility: row.visibility || 'External',
+    startDate: '',
+    endDate: '',
+    revenueLinked: 'No',
+    ticketRef: '',
+    remarks: '',
+    severity: 'Medium',
+    custom: {}
+  };
+}
+
+function mapToSupabase(data) {
+  return {
+    enhancement: data.enhancement || '',
+    description: data.description || '',
+    platform: data.platform || '',
+    owner: data.owner || '',
+    status: data.status || 'Open',
+    priority: data.priority || 'P2',
+    visibility: data.visibility === 'Internal' ? 'Internal' : 'External'
+  };
+}
+
+async function loadItemsFromSupabase() {
+  try {
+    const { data, error } = await supabaseClient
+      .from(SUPABASE_TABLE)
+      .select('*')
+      .order('id', { ascending: false });
+    if (error) throw error;
+    SUPABASE_ITEMS_CACHE = (data || []).map(mapFromSupabase);
+    populateDropdownsFromSupabaseItems();
+    renderTable();
+  } catch (err) {
+    console.error('Supabase load error:', err);
+    toast('Could not load tracker items from Supabase. Check console.', 'error');
+  }
+}
+
+function populateDropdownsFromSupabaseItems() {
+  const dd = getDropdowns();
+  SUPABASE_ITEMS_CACHE.forEach(it => {
+    [['Platform', it.platform], ['Owner', it.owner], ['Status', it.status], ['Priority', it.priority]].forEach(([cat, val]) => {
+      if (val && dd[cat] && !dd[cat].some(x => x.toLowerCase() === val.toLowerCase())) dd[cat].push(val);
+    });
+  });
+  setDropdowns(dd);
+  populateAllDropdowns();
+}
+
+// Override local item storage with Supabase-backed in-memory cache.
+getItems = function() { return SUPABASE_ITEMS_CACHE; };
+setItems = function(v) { SUPABASE_ITEMS_CACHE = Array.isArray(v) ? v : []; };
+
+const _supabasePreviousShowApp = showApp;
+showApp = function() {
+  _supabasePreviousShowApp();
+  loadItemsFromSupabase();
+};
+
+const _supabasePreviousSaveItem = saveItem;
+saveItem = async function() {
+  if (!canWrite()) { toast('External users have read-only access', 'error'); return; }
+  const id = document.getElementById('itemId').value;
+  const data = {
+    enhancement: document.getElementById('itemEnhancement').value.trim(),
+    description: document.getElementById('itemDescription').value.trim(),
+    platform: document.getElementById('itemPlatform').value,
+    owner: document.getElementById('itemOwner').value,
+    status: document.getElementById('itemStatus').value,
+    priority: document.getElementById('itemPriority').value,
+    visibility: document.getElementById('itemVisibility')?.value || 'External'
+  };
+  if (!data.enhancement) { toast('Enhancement title is required', 'error'); return; }
+  try {
+    if (id) {
+      const { error } = await supabaseClient.from(SUPABASE_TABLE).update(mapToSupabase(data)).eq('id', Number(id));
+      if (error) throw error;
+      toast('Enhancement updated in Supabase');
+    } else {
+      const { error } = await supabaseClient.from(SUPABASE_TABLE).insert([mapToSupabase(data)]);
+      if (error) throw error;
+      toast('Enhancement added to Supabase');
+    }
+    closeModal('itemModal');
+    await loadItemsFromSupabase();
+  } catch (err) {
+    console.error('Supabase save error:', err);
+    toast('Could not save to Supabase. Check console.', 'error');
+  }
+};
+
+deleteItem = function(id) {
+  if (!canWrite()) { toast('External users have read-only access', 'error'); return; }
+  openConfirm('Delete enhancement?', 'This will delete the record from Supabase.', async () => {
+    try {
+      const { error } = await supabaseClient.from(SUPABASE_TABLE).delete().eq('id', Number(id));
+      if (error) throw error;
+      toast('Enhancement deleted from Supabase');
+      await loadItemsFromSupabase();
+    } catch (err) {
+      console.error('Supabase delete error:', err);
+      toast('Could not delete from Supabase. Check console.', 'error');
+    }
+  });
+};
+
+/* ========== INIT ========== */
+function refreshAll() {
+  populateAllDropdowns();
+  renderTable();
+}
+function bindEvents() {
+  document.getElementById('loginForm').addEventListener('submit', attemptLogin);
+  ['searchInput','filterPlatform','filterOwner','filterStatus','filterSeverity','filterPriority','filterRevenue']
+    .forEach(id => document.getElementById(id).addEventListener('input', renderTable));
+  // Close modal on backdrop click
+  document.querySelectorAll('.modal-backdrop').forEach(m => {
+    m.addEventListener('click', (e) => { if (e.target === m) m.classList.remove('show'); });
+  });
+}
+bindEvents();
+if (restoreSession()) showApp();
+</script>
+</body>
+</html>
