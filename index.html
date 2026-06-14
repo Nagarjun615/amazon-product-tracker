@@ -2634,6 +2634,313 @@ showApp = function() {
 };
 
 
+
+/* ========== SUPABASE USER INTEGRATION ========== */
+const SUPABASE_USERS_TABLE = 'tracker_users';
+let SUPABASE_USERS_CACHE = [];
+
+function mapUserFromSupabase(row) {
+  return {
+    id: row.id,
+    name: row.name || '',
+    email: (row.email || '').toLowerCase(),
+    password: row.password || '',
+    role: row.role === 'admin' ? 'admin' : row.role === 'external' ? 'external' : 'internal',
+    isActive: row.is_active !== false
+  };
+}
+
+function mapUserToSupabase(user) {
+  return {
+    name: user.name || '',
+    email: (user.email || '').toLowerCase(),
+    password: user.password || '',
+    role: user.role === 'admin' ? 'admin' : user.role === 'external' ? 'external' : 'internal',
+    is_active: user.isActive !== false
+  };
+}
+
+async function loadUsersFromSupabase() {
+  try {
+    const { data, error } = await supabaseClient
+      .from(SUPABASE_USERS_TABLE)
+      .select('*')
+      .eq('is_active', true)
+      .order('id', { ascending: true });
+
+    if (error) throw error;
+    SUPABASE_USERS_CACHE = (data || []).map(mapUserFromSupabase);
+    return SUPABASE_USERS_CACHE;
+  } catch (err) {
+    console.error('Supabase user load error:', err);
+    toast('Could not load users from Supabase. Check console.', 'error');
+    return SUPABASE_USERS_CACHE;
+  }
+}
+
+getUsers = function() {
+  return SUPABASE_USERS_CACHE;
+};
+
+setUsers = function(v) {
+  SUPABASE_USERS_CACHE = Array.isArray(v) ? v : [];
+};
+
+attemptLogin = async function(e) {
+  e.preventDefault();
+  const email = document.getElementById('loginEmail').value.trim().toLowerCase();
+  const pwd = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+
+  await loadUsersFromSupabase();
+  const user = getUsers().find(u => u.email.toLowerCase() === email && u.password === pwd && u.isActive !== false);
+
+  if (!user) {
+    errEl.textContent = 'Invalid email or password.';
+    return;
+  }
+
+  currentUser = user;
+  sessionStorage.setItem(K.SESSION, JSON.stringify({ id: user.id }));
+  showApp();
+};
+
+restoreSession = async function() {
+  const s = sessionStorage.getItem(K.SESSION);
+  if (!s) return false;
+
+  let id = null;
+  try { id = JSON.parse(s).id; } catch { return false; }
+
+  await loadUsersFromSupabase();
+  const u = getUsers().find(x => Number(x.id) === Number(id) && x.isActive !== false);
+  if (!u) return false;
+
+  currentUser = u;
+  return true;
+};
+
+renderUsers = function() {
+  const tbody = document.getElementById('usersBody');
+  tbody.innerHTML = '';
+
+  getUsers().forEach(u => {
+    const tr = document.createElement('tr');
+    const cls = u.role === 'admin' ? 'pill-sev-high' : u.role === 'external' ? 'pill-hold' : 'pill-open';
+    tr.innerHTML = `
+      <td>${escapeHtml(u.name)}</td>
+      <td>${escapeHtml(u.email)}</td>
+      <td><span class="pill ${cls}">${roleLabel(u.role)}</span></td>
+      <td style="text-align:right;">
+        <button class="icon-btn" title="Reset Password" onclick="resetUserPwd(${u.id})">🔑</button>
+        <button class="icon-btn danger" title="Delete" onclick="deleteUser(${u.id})">🗑</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+};
+
+openUsersManager = async function() {
+  if (!isAdmin()) { toast('Only admins can manage users', 'error'); return; }
+  await loadUsersFromSupabase();
+  renderUsers();
+  document.getElementById('usersModal').classList.add('show');
+};
+
+addUser = async function() {
+  const name = document.getElementById('newUserName').value.trim();
+  const email = document.getElementById('newUserEmail').value.trim().toLowerCase();
+  const pwd = document.getElementById('newUserPwd').value;
+  const role = document.getElementById('newUserRole').value;
+
+  if (!name || !email || !pwd) { toast('All fields are required', 'error'); return; }
+  if (!/^\S+@\S+\.\S+$/.test(email)) { toast('Enter a valid email', 'error'); return; }
+
+  await loadUsersFromSupabase();
+  if (getUsers().some(u => u.email.toLowerCase() === email)) {
+    toast('Email already exists', 'error');
+    return;
+  }
+
+  try {
+    const { error } = await supabaseClient
+      .from(SUPABASE_USERS_TABLE)
+      .insert([mapUserToSupabase({ name, email, password: pwd, role, isActive: true })]);
+
+    if (error) throw error;
+
+    document.getElementById('newUserName').value = '';
+    document.getElementById('newUserEmail').value = '';
+    document.getElementById('newUserPwd').value = '';
+
+    await loadUsersFromSupabase();
+    renderUsers();
+    toast(`${roleLabel(role)} ${name} added`);
+  } catch (err) {
+    console.error('Supabase add user error:', err);
+    toast('Could not add user in Supabase. Check console.', 'error');
+  }
+};
+
+resetUserPwd = async function(id) {
+  const u = getUsers().find(x => Number(x.id) === Number(id));
+  if (!u) return;
+
+  const newPwd = prompt(`Enter new password for ${u.email}:`, '');
+  if (newPwd === null) return;
+  if (!newPwd.trim()) { toast('Password cannot be empty', 'error'); return; }
+
+  try {
+    const { error } = await supabaseClient
+      .from(SUPABASE_USERS_TABLE)
+      .update({ password: newPwd })
+      .eq('id', Number(id));
+
+    if (error) throw error;
+
+    await loadUsersFromSupabase();
+    renderUsers();
+    toast('Password updated in Supabase');
+  } catch (err) {
+    console.error('Supabase password reset error:', err);
+    toast('Could not reset password in Supabase. Check console.', 'error');
+  }
+};
+
+deleteUser = async function(id) {
+  if (currentUser && Number(id) === Number(currentUser.id)) {
+    toast('You cannot delete your own account', 'error');
+    return;
+  }
+
+  const u = getUsers().find(x => Number(x.id) === Number(id));
+  if (!u) return;
+
+  openConfirm('Delete user?', `${u.email} will lose access to the portal.`, async () => {
+    try {
+      const { error } = await supabaseClient
+        .from(SUPABASE_USERS_TABLE)
+        .update({ is_active: false })
+        .eq('id', Number(id));
+
+      if (error) throw error;
+
+      await loadUsersFromSupabase();
+      renderUsers();
+      toast('User removed from active users');
+    } catch (err) {
+      console.error('Supabase delete user error:', err);
+      toast('Could not delete user in Supabase. Check console.', 'error');
+    }
+  });
+};
+
+const previousShowAppForSupabaseUsers = showApp;
+showApp = function() {
+  previousShowAppForSupabaseUsers();
+  loadUsersFromSupabase();
+};
+
+/* ========== SUPABASE ITEM FIELD FIXES ========== */
+mapFromSupabase = function(row) {
+  return {
+    id: row.id,
+    enhancement: row.enhancement || '',
+    description: row.description || '',
+    platform: row.platform || '',
+    owner: row.owner || '',
+    status: row.status || 'Open',
+    priority: row.priority || 'P2',
+    visibility: row.visibility || 'External',
+    startDate: row.start_date || '',
+    endDate: row.end_date || '',
+    revenueLinked: row.revenue_linked || 'No',
+    ticketRef: row.ticket_ref || '',
+    remarks: row.remarks || '',
+    severity: row.severity || 'Medium',
+    custom: row.custom || {}
+  };
+};
+
+mapToSupabase = function(data) {
+  return {
+    enhancement: data.enhancement || '',
+    description: data.description || '',
+    platform: data.platform || '',
+    owner: data.owner || '',
+    status: data.status || 'Open',
+    priority: data.priority || 'P2',
+    visibility: data.visibility === 'Internal' ? 'Internal' : 'External',
+    start_date: data.startDate || null,
+    end_date: data.endDate || null,
+    revenue_linked: data.revenueLinked || 'No',
+    ticket_ref: data.ticketRef || '',
+    remarks: data.remarks || '',
+    severity: data.severity || 'Medium',
+    custom: data.custom || {}
+  };
+};
+
+saveItem = async function() {
+  if (!canWrite()) { toast('External users have read-only access', 'error'); return; }
+
+  const id = document.getElementById('itemId').value;
+
+  const custom = {};
+  document.querySelectorAll('.custom-field-input').forEach(el => {
+    custom[el.dataset.key] = el.value.trim();
+  });
+
+  const data = {
+    enhancement: document.getElementById('itemEnhancement').value.trim(),
+    description: document.getElementById('itemDescription').value.trim(),
+    platform: document.getElementById('itemPlatform').value,
+    owner: document.getElementById('itemOwner').value,
+    startDate: document.getElementById('itemStartDate').value,
+    endDate: document.getElementById('itemEndDate').value,
+    status: document.getElementById('itemStatus').value,
+    revenueLinked: document.getElementById('itemRevenue').value,
+    severity: document.getElementById('itemSeverity').value,
+    priority: document.getElementById('itemPriority').value,
+    ticketRef: document.getElementById('itemTicket').value.trim(),
+    remarks: document.getElementById('itemRemarks').value.trim(),
+    visibility: document.getElementById('itemVisibility')?.value || 'External',
+    custom
+  };
+
+  if (!data.enhancement) { toast('Enhancement title is required', 'error'); return; }
+  if (!data.startDate) { toast('Start date is required', 'error'); return; }
+  if (data.endDate && data.endDate < data.startDate) {
+    toast('End date cannot be before start date', 'error');
+    return;
+  }
+
+  try {
+    if (id) {
+      const { error } = await supabaseClient
+        .from(SUPABASE_TABLE)
+        .update(mapToSupabase(data))
+        .eq('id', Number(id));
+
+      if (error) throw error;
+      toast('Enhancement updated in Supabase');
+    } else {
+      const { error } = await supabaseClient
+        .from(SUPABASE_TABLE)
+        .insert([mapToSupabase(data)]);
+
+      if (error) throw error;
+      toast('Enhancement added to Supabase');
+    }
+
+    closeModal('itemModal');
+    await loadItemsFromSupabase();
+  } catch (err) {
+    console.error('Supabase save error:', err);
+    toast('Could not save to Supabase. Check console.', 'error');
+  }
+};
+
 /* ========== INIT ========== */
 function refreshAll() {
   populateAllDropdowns();
@@ -2648,8 +2955,12 @@ function bindEvents() {
     m.addEventListener('click', (e) => { if (e.target === m) m.classList.remove('show'); });
   });
 }
-bindEvents();
-if (restoreSession()) showApp();
+async function initApp() {
+  bindEvents();
+  await loadUsersFromSupabase();
+  if (await restoreSession()) showApp();
+}
+initApp();
 </script>
 </body>
 </html>
