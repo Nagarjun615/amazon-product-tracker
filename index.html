@@ -2757,43 +2757,54 @@ addUser = async function() {
   if (!/^\S+@\S+\.\S+$/.test(email)) { toast('Enter a valid email', 'error'); return; }
 
   try {
-    // Check by email across active and inactive records. This fixes users that were soft-deleted earlier.
-    const { data: existingRows, error: lookupError } = await supabaseClient
+    // Look up this email across both active and inactive records.
+    // If the user was soft-deleted earlier, reactivate the same row instead of inserting a duplicate.
+    const { data: existingUser, error: lookupError } = await supabaseClient
       .from(SUPABASE_USERS_TABLE)
       .select('*')
       .eq('email', email)
-      .limit(1);
+      .maybeSingle();
 
     if (lookupError) throw lookupError;
 
-    if (existingRows && existingRows.length) {
-      const existing = existingRows[0];
+    if (existingUser) {
+      if (existingUser.is_active === false) {
+        const { error: reactivateError } = await supabaseClient
+          .from(SUPABASE_USERS_TABLE)
+          .update({
+            is_active: true,
+            name,
+            email,
+            password: pwd,
+            role
+          })
+          .eq('id', Number(existingUser.id));
 
-      if (existing.is_active !== false) {
-        toast('Email already exists', 'error');
+        if (reactivateError) throw reactivateError;
+
+        document.getElementById('newUserName').value = '';
+        document.getElementById('newUserEmail').value = '';
+        document.getElementById('newUserPwd').value = '';
+
+        await loadUsersFromSupabase();
+        renderUsers();
+        toast(`${roleLabel(role)} ${name} reactivated`);
         return;
       }
 
-      const { error: reactivateError } = await supabaseClient
-        .from(SUPABASE_USERS_TABLE)
-        .update(mapUserToSupabase({ name, email, password: pwd, role, isActive: true }))
-        .eq('id', Number(existing.id));
-
-      if (reactivateError) throw reactivateError;
-
-      document.getElementById('newUserName').value = '';
-      document.getElementById('newUserEmail').value = '';
-      document.getElementById('newUserPwd').value = '';
-
-      await loadUsersFromSupabase();
-      renderUsers();
-      toast(`${roleLabel(role)} ${name} reactivated`);
+      toast('User already exists', 'error');
       return;
     }
 
     const { error } = await supabaseClient
       .from(SUPABASE_USERS_TABLE)
-      .insert([mapUserToSupabase({ name, email, password: pwd, role, isActive: true })]);
+      .insert([{
+        name,
+        email,
+        password: pwd,
+        role,
+        is_active: true
+      }]);
 
     if (error) throw error;
 
@@ -2806,7 +2817,7 @@ addUser = async function() {
     toast(`${roleLabel(role)} ${name} added`);
   } catch (err) {
     console.error('Supabase add user error:', err);
-    toast('Could not add user in Supabase. Check console.', 'error');
+    toast('Could not add/reactivate user in Supabase. Check console.', 'error');
   }
 };
 
@@ -2844,21 +2855,21 @@ deleteUser = async function(id) {
   const u = getUsers().find(x => Number(x.id) === Number(id));
   if (!u) return;
 
-  openConfirm('Delete user?', `${u.email} will be permanently deleted from Supabase.`, async () => {
+  openConfirm('Delete user?', `${u.email} will be deactivated. You can add the same email again later to reactivate it.`, async () => {
     try {
       const { error } = await supabaseClient
         .from(SUPABASE_USERS_TABLE)
-        .delete()
+        .update({ is_active: false })
         .eq('id', Number(id));
 
       if (error) throw error;
 
       await loadUsersFromSupabase();
       renderUsers();
-      toast('User deleted from Supabase');
+      toast('User deactivated in Supabase');
     } catch (err) {
-      console.error('Supabase delete user error:', err);
-      toast('Could not delete user in Supabase. Check console.', 'error');
+      console.error('Supabase deactivate user error:', err);
+      toast('Could not deactivate user in Supabase. Check console.', 'error');
     }
   });
 };
