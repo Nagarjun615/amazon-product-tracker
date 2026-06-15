@@ -761,34 +761,18 @@ const K = {
 };
 
 /* ========== SEED DATA ========== */
+/*
+  Supabase is now the source of truth for:
+  - tracker_items
+  - tracker_subtasks
+  - tracker_users
+  - tracker_dropdowns
+
+  Do not seed Users, Items, or Dropdowns into localStorage.
+  localStorage is retained only for UI configuration such as column visibility.
+*/
 function seed() {
-  if (!localStorage.getItem(K.USERS)) {
-    localStorage.setItem(K.USERS, JSON.stringify([
-      { id: 1, name: 'Admin', email: 'admin@pinelabs.com', password: 'admin123', role: 'admin' },
-      { id: 2, name: 'Nitin', email: 'nitin@pinelabs.com', password: 'user123', role: 'user' },
-      { id: 3, name: 'Karthikeyan', email: 'karthik@pinelabs.com', password: 'user123', role: 'user' }
-    ]));
-  }
-  if (!localStorage.getItem(K.DROPDOWNS)) {
-    localStorage.setItem(K.DROPDOWNS, JSON.stringify({
-      Platform: ['Amazon', 'WooHoo', 'NPCI', 'Gaming', 'Revalidation Portal', 'BGMI Top-up'],
-      Owner: ['Nitin', 'Praveen K.', 'Karthikeyan', 'Nagarjun', 'Tejaswini', 'Sreehari', 'Ashritha', 'Abhishek'],
-      Status: ['Open', 'In Progress', 'On Hold', 'Blocked', 'Done'],
-      Severity: ['Critical', 'High', 'Medium', 'Low'],
-      Priority: ['P0', 'P1', 'P2', 'P3']
-    }));
-  }
-  if (!localStorage.getItem(K.ITEMS)) {
-    const today = new Date();
-    const d = (n) => { const x = new Date(today); x.setDate(x.getDate() - n); return x.toISOString().slice(0,10); };
-    localStorage.setItem(K.ITEMS, JSON.stringify([
-      { id: 1, enhancement: 'Bulk Reissuance API', description: 'Allow ops team to reissue expired gift cards in bulk with CSV upload and validation dashboard.', platform: 'WooHoo', startDate: d(45), endDate: '', owner: 'Praveen K.', status: 'In Progress', revenueLinked: 'Yes', ticketRef: 'JIRA-4521', remarks: 'Validation logic under review', severity: 'High', priority: 'P1' },
-      { id: 2, enhancement: 'Amazon Velocity Alerts', description: 'Productized alerting framework for transactions exceeding 15L monthly threshold.', platform: 'Amazon', startDate: d(20), endDate: '', owner: 'Karthikeyan', status: 'Open', revenueLinked: 'Yes', ticketRef: 'JIRA-4602', remarks: 'Pending engineering ownership', severity: 'Critical', priority: 'P0' },
-      { id: 3, enhancement: 'BGMI UC Top-up Flow', description: 'New top-up flow with GST handling (CGST 9% + SGST 9%) and order summary.', platform: 'Gaming', startDate: d(60), endDate: d(5), owner: 'Nitin', status: 'Done', revenueLinked: 'Yes', ticketRef: 'JIRA-4488', remarks: 'Released to UAT', severity: 'Medium', priority: 'P2' },
-      { id: 4, enhancement: 'NPCI Settlement Recon', description: 'Automate end-of-day settlement reconciliation report for NPCI partners.', platform: 'NPCI', startDate: d(90), endDate: '', owner: 'Nagarjun', status: 'On Hold', revenueLinked: 'No', ticketRef: 'JIRA-4221', remarks: 'Awaiting partner API spec', severity: 'Low', priority: 'P3' },
-      { id: 5, enhancement: 'Revalidation Portal Uptime Monitor', description: 'Set up active monitoring after 1.5 month outage went undetected.', platform: 'Revalidation Portal', startDate: d(15), endDate: '', owner: 'Tejaswini', status: 'Blocked', revenueLinked: 'Yes', ticketRef: 'INC-9981', remarks: 'Vendor dependency', severity: 'Critical', priority: 'P0' }
-    ]));
-  }
+  // Intentionally empty.
 }
 seed();
 
@@ -2855,21 +2839,21 @@ deleteUser = async function(id) {
   const u = getUsers().find(x => Number(x.id) === Number(id));
   if (!u) return;
 
-  openConfirm('Delete user?', `${u.email} will be permanently deleted from Supabase.`, async () => {
+  openConfirm('Delete user?', `${u.email} will be deactivated. You can add the same email again later to reactivate it.`, async () => {
     try {
       const { error } = await supabaseClient
         .from(SUPABASE_USERS_TABLE)
-        .delete()
+        .update({ is_active: false })
         .eq('id', Number(id));
 
       if (error) throw error;
 
       await loadUsersFromSupabase();
       renderUsers();
-      toast('User deleted from Supabase');
+      toast('User deactivated in Supabase');
     } catch (err) {
-      console.error('Supabase delete user error:', err);
-      toast('Could not delete user from Supabase. Check console.', 'error');
+      console.error('Supabase deactivate user error:', err);
+      toast('Could not deactivate user in Supabase. Check console.', 'error');
     }
   });
 };
@@ -2879,300 +2863,6 @@ showApp = function() {
   previousShowAppForSupabaseUsers();
   loadUsersFromSupabase();
 };
-
-
-/* ========== SUPABASE DROPDOWN INTEGRATION ========== */
-const SUPABASE_DROPDOWNS_TABLE = 'tracker_dropdowns';
-let SUPABASE_DROPDOWNS_CACHE = {
-  Platform: [],
-  Owner: [],
-  Status: [],
-  Severity: [],
-  Priority: []
-};
-
-function normalizeDropdowns(v) {
-  const base = { Platform: [], Owner: [], Status: [], Severity: [], Priority: [] };
-  Object.keys(base).forEach(cat => {
-    base[cat] = Array.isArray(v && v[cat]) ? v[cat].filter(Boolean) : [];
-  });
-  return base;
-}
-
-function getDropdownFieldMap(category) {
-  return {
-    Platform: { itemField: 'platform', itemColumn: 'platform', subtaskColumn: null },
-    Owner: { itemField: 'owner', itemColumn: 'owner', subtaskColumn: 'owner' },
-    Status: { itemField: 'status', itemColumn: 'status', subtaskColumn: 'status' },
-    Severity: { itemField: 'severity', itemColumn: 'severity', subtaskColumn: null },
-    Priority: { itemField: 'priority', itemColumn: 'priority', subtaskColumn: null }
-  }[category];
-}
-
-async function loadDropdownsFromSupabase() {
-  try {
-    const { data, error } = await supabaseClient
-      .from(SUPABASE_DROPDOWNS_TABLE)
-      .select('*')
-      .order('category', { ascending: true })
-      .order('sort_order', { ascending: true })
-      .order('value', { ascending: true });
-
-    if (error) throw error;
-
-    const dd = { Platform: [], Owner: [], Status: [], Severity: [], Priority: [] };
-    (data || []).forEach(row => {
-      const cat = row.category;
-      const val = row.value;
-      if (!dd[cat]) dd[cat] = [];
-      if (val && row.is_active !== false && !dd[cat].some(x => x.toLowerCase() === String(val).toLowerCase())) {
-        dd[cat].push(String(val));
-      }
-    });
-
-    SUPABASE_DROPDOWNS_CACHE = normalizeDropdowns(dd);
-    populateAllDropdowns();
-    if (document.getElementById('dropdownModal')?.classList.contains('show')) renderDDList();
-    return SUPABASE_DROPDOWNS_CACHE;
-  } catch (err) {
-    console.error('Supabase dropdown load error:', err);
-    toast('Could not load dropdowns from Supabase. Check console.', 'error');
-    return SUPABASE_DROPDOWNS_CACHE;
-  }
-}
-
-// Override dropdown storage with Supabase-backed in-memory cache.
-getDropdowns = function() {
-  return SUPABASE_DROPDOWNS_CACHE;
-};
-
-setDropdowns = function(v) {
-  SUPABASE_DROPDOWNS_CACHE = normalizeDropdowns(v);
-};
-
-populateDropdownsFromSupabaseItems = function() {
-  populateAllDropdowns();
-};
-
-function dropdownUsageCount(category, value) {
-  const map = getDropdownFieldMap(category);
-  if (!map) return 0;
-
-  let count = 0;
-  if (map.itemField) {
-    count += getItems().filter(it => it[map.itemField] === value).length;
-  }
-  if (map.subtaskColumn) {
-    count += getSubtasks().filter(st => st[map.subtaskColumn] === value).length;
-  }
-  return count;
-}
-
-renderDDList = function() {
-  const dd = getDropdowns();
-  const ul = document.getElementById('ddList');
-  ul.innerHTML = '';
-
-  (dd[editingDDCategory] || []).forEach((val, idx) => {
-    const usedCount = dropdownUsageCount(editingDDCategory, val);
-    const li = document.createElement('li');
-    li.innerHTML = `
-      <span class="dd-value">${escapeHtml(val)}<span class="used-count">(${usedCount} record${usedCount !== 1 ? 's' : ''})</span></span>
-      <span class="actions">
-        <button class="icon-btn" title="Edit" onclick="editDDValue(${idx})">✎</button>
-        <button class="icon-btn danger" title="Delete" onclick="deleteDDValue(${idx})">🗑</button>
-      </span>`;
-    ul.appendChild(li);
-  });
-};
-
-addDDValue = async function() {
-  const input = document.getElementById('ddNewValue');
-  const val = input.value.trim();
-
-  if (!val) { toast('Enter a value', 'error'); return; }
-
-  const dd = getDropdowns();
-  if (!dd[editingDDCategory]) dd[editingDDCategory] = [];
-
-  if (dd[editingDDCategory].some(v => v.toLowerCase() === val.toLowerCase())) {
-    toast('Value already exists', 'error');
-    return;
-  }
-
-  try {
-    const nextOrder = (dd[editingDDCategory] || []).length + 1;
-
-    const { error } = await supabaseClient
-      .from(SUPABASE_DROPDOWNS_TABLE)
-      .insert([{
-        category: editingDDCategory,
-        value: val,
-        sort_order: nextOrder,
-        is_active: true
-      }]);
-
-    if (error) throw error;
-
-    input.value = '';
-    await loadDropdownsFromSupabase();
-    toast(`Added "${val}" to ${editingDDCategory}`);
-  } catch (err) {
-    console.error('Supabase dropdown add error:', err);
-    toast('Could not add dropdown value in Supabase. Check console.', 'error');
-  }
-};
-
-editDDValue = async function(idx) {
-  const dd = getDropdowns();
-  const oldVal = dd[editingDDCategory][idx];
-  const newVal = prompt(`Rename "${oldVal}" to:`, oldVal);
-
-  if (newVal === null) return;
-
-  const trimmed = newVal.trim();
-  if (!trimmed) { toast('Value cannot be empty', 'error'); return; }
-  if (trimmed === oldVal) return;
-
-  if (dd[editingDDCategory].some((v, i) => i !== idx && v.toLowerCase() === trimmed.toLowerCase())) {
-    toast('That value already exists', 'error');
-    return;
-  }
-
-  try {
-    const map = getDropdownFieldMap(editingDDCategory);
-
-    const { error: ddError } = await supabaseClient
-      .from(SUPABASE_DROPDOWNS_TABLE)
-      .update({ value: trimmed })
-      .eq('category', editingDDCategory)
-      .eq('value', oldVal);
-
-    if (ddError) throw ddError;
-
-    if (map?.itemColumn) {
-      const { error: itemError } = await supabaseClient
-        .from(SUPABASE_TABLE)
-        .update({ [map.itemColumn]: trimmed })
-        .eq(map.itemColumn, oldVal);
-
-      if (itemError) throw itemError;
-    }
-
-    if (map?.subtaskColumn) {
-      const { error: subtaskError } = await supabaseClient
-        .from(SUPABASE_SUBTASK_TABLE)
-        .update({ [map.subtaskColumn]: trimmed })
-        .eq(map.subtaskColumn, oldVal);
-
-      if (subtaskError) throw subtaskError;
-    }
-
-    await loadDropdownsFromSupabase();
-    await loadItemsFromSupabase();
-    await loadSubtasksFromSupabase();
-
-    toast(`Renamed to "${trimmed}"`);
-  } catch (err) {
-    console.error('Supabase dropdown rename error:', err);
-    toast('Could not rename dropdown value in Supabase. Check console.', 'error');
-  }
-};
-
-deleteDDValue = function(idx) {
-  const dd = getDropdowns();
-  const val = dd[editingDDCategory][idx];
-
-  if (dd[editingDDCategory].length <= 1) {
-    toast('Cannot delete the only value in this category', 'error');
-    return;
-  }
-
-  const usedCount = dropdownUsageCount(editingDDCategory, val);
-
-  if (usedCount === 0) {
-    openConfirm('Delete value?', `"${val}" will be permanently deleted from Supabase.`, async () => {
-      await hardDeleteDropdownValue(editingDDCategory, val);
-    });
-    return;
-  }
-
-  const replacements = dd[editingDDCategory].filter((_, i) => i !== idx);
-  openConfirmReplace(
-    'Replace value before deleting',
-    `"${val}" is used in ${usedCount} record(s). Pick a replacement:`,
-    replacements,
-    async (replacement) => {
-      await replaceAndHardDeleteDropdownValue(editingDDCategory, val, replacement);
-    }
-  );
-};
-
-async function hardDeleteDropdownValue(category, value) {
-  try {
-    const { error } = await supabaseClient
-      .from(SUPABASE_DROPDOWNS_TABLE)
-      .delete()
-      .eq('category', category)
-      .eq('value', value);
-
-    if (error) throw error;
-
-    await loadDropdownsFromSupabase();
-    toast(`Deleted "${value}" from Supabase`);
-  } catch (err) {
-    console.error('Supabase dropdown delete error:', err);
-    toast('Could not delete dropdown value in Supabase. Check console.', 'error');
-  }
-}
-
-async function replaceAndHardDeleteDropdownValue(category, oldValue, replacement) {
-  try {
-    const map = getDropdownFieldMap(category);
-
-    if (map?.itemColumn) {
-      const { error: itemError } = await supabaseClient
-        .from(SUPABASE_TABLE)
-        .update({ [map.itemColumn]: replacement })
-        .eq(map.itemColumn, oldValue);
-
-      if (itemError) throw itemError;
-    }
-
-    if (map?.subtaskColumn) {
-      const { error: subtaskError } = await supabaseClient
-        .from(SUPABASE_SUBTASK_TABLE)
-        .update({ [map.subtaskColumn]: replacement })
-        .eq(map.subtaskColumn, oldValue);
-
-      if (subtaskError) throw subtaskError;
-    }
-
-    const { error: deleteError } = await supabaseClient
-      .from(SUPABASE_DROPDOWNS_TABLE)
-      .delete()
-      .eq('category', category)
-      .eq('value', oldValue);
-
-    if (deleteError) throw deleteError;
-
-    await loadDropdownsFromSupabase();
-    await loadItemsFromSupabase();
-    await loadSubtasksFromSupabase();
-
-    toast(`Replaced "${oldValue}" with "${replacement}" and deleted it from Supabase`);
-  } catch (err) {
-    console.error('Supabase dropdown replace/delete error:', err);
-    toast('Could not replace/delete dropdown value in Supabase. Check console.', 'error');
-  }
-};
-
-const previousShowAppForSupabaseDropdowns = showApp;
-showApp = function() {
-  previousShowAppForSupabaseDropdowns();
-  loadDropdownsFromSupabase();
-};
-
 
 /* ========== SUPABASE ITEM FIELD FIXES ========== */
 mapFromSupabase = function(row) {
@@ -3273,6 +2963,296 @@ saveItem = async function() {
     toast('Could not save to Supabase. Check console.', 'error');
   }
 };
+
+
+/* ========== SUPABASE DROPDOWN INTEGRATION ========== */
+const SUPABASE_DROPDOWN_TABLE = 'tracker_dropdowns';
+const DROPDOWN_CATEGORIES = ['Platform', 'Owner', 'Status', 'Severity', 'Priority'];
+const DROPDOWN_FIELD_MAP = {
+  Platform: 'platform',
+  Owner: 'owner',
+  Status: 'status',
+  Severity: 'severity',
+  Priority: 'priority'
+};
+let SUPABASE_DROPDOWNS_CACHE = {
+  Platform: [],
+  Owner: [],
+  Status: [],
+  Severity: [],
+  Priority: []
+};
+
+function normalizeDropdowns(obj) {
+  const out = { Platform: [], Owner: [], Status: [], Severity: [], Priority: [] };
+  DROPDOWN_CATEGORIES.forEach(cat => {
+    const values = obj && Array.isArray(obj[cat]) ? obj[cat] : [];
+    values.forEach(v => {
+      const val = String(v || '').trim();
+      if (val && !out[cat].some(x => x.toLowerCase() === val.toLowerCase())) out[cat].push(val);
+    });
+  });
+  return out;
+}
+
+async function loadDropdownsFromSupabase() {
+  try {
+    const { data, error } = await supabaseClient
+      .from(SUPABASE_DROPDOWN_TABLE)
+      .select('*')
+      .eq('is_active', true)
+      .order('category', { ascending: true })
+      .order('sort_order', { ascending: true })
+      .order('value', { ascending: true });
+
+    if (error) throw error;
+
+    const dd = { Platform: [], Owner: [], Status: [], Severity: [], Priority: [] };
+    (data || []).forEach(row => {
+      const cat = row.category;
+      const val = String(row.value || '').trim();
+      if (DROPDOWN_CATEGORIES.includes(cat) && val && !dd[cat].some(x => x.toLowerCase() === val.toLowerCase())) {
+        dd[cat].push(val);
+      }
+    });
+
+    SUPABASE_DROPDOWNS_CACHE = normalizeDropdowns(dd);
+    populateAllDropdowns();
+    if (document.getElementById('dropdownModal')?.classList.contains('show')) renderDDList();
+    return SUPABASE_DROPDOWNS_CACHE;
+  } catch (err) {
+    console.error('Supabase dropdown load error:', err);
+    toast('Could not load dropdowns from Supabase. Check console.', 'error');
+    return SUPABASE_DROPDOWNS_CACHE;
+  }
+}
+
+// Override dropdown storage with Supabase-backed in-memory cache.
+getDropdowns = function() {
+  return normalizeDropdowns(SUPABASE_DROPDOWNS_CACHE);
+};
+
+setDropdowns = function(v) {
+  SUPABASE_DROPDOWNS_CACHE = normalizeDropdowns(v);
+};
+
+populateAllDropdowns = function() {
+  const dd = getDropdowns();
+
+  fillSelect(document.getElementById('filterPlatform'), dd.Platform, true, 'All Platforms');
+  fillSelect(document.getElementById('filterOwner'), dd.Owner, true, 'All Owners');
+  fillSelect(document.getElementById('filterStatus'), dd.Status, true, 'All Status');
+  fillSelect(document.getElementById('filterSeverity'), dd.Severity, true, 'All Severities');
+  fillSelect(document.getElementById('filterPriority'), dd.Priority, true, 'All Priorities');
+
+  fillSelect(document.getElementById('itemPlatform'), dd.Platform, false);
+  fillSelect(document.getElementById('itemOwner'), dd.Owner, false);
+  fillSelect(document.getElementById('itemStatus'), dd.Status, false);
+  fillSelect(document.getElementById('itemSeverity'), dd.Severity, false);
+  fillSelect(document.getElementById('itemPriority'), dd.Priority, false);
+
+  const subtaskStatus = document.getElementById('subtaskStatus');
+  const subtaskOwner = document.getElementById('subtaskOwner');
+  if (subtaskStatus) fillSelect(subtaskStatus, dd.Status, false);
+  if (subtaskOwner) fillSelect(subtaskOwner, dd.Owner, false);
+};
+
+openDropdownManager = async function() {
+  if (!isAdmin()) { toast('Only admins can manage dropdowns', 'error'); return; }
+  await loadDropdownsFromSupabase();
+  editingDDCategory = 'Platform';
+  document.querySelectorAll('.dd-tab').forEach(t => t.classList.toggle('active', t.dataset.cat === 'Platform'));
+  renderDDList();
+  document.getElementById('dropdownModal').classList.add('show');
+};
+
+renderDDList = function() {
+  const dd = getDropdowns();
+  const items = getItems();
+  const field = DROPDOWN_FIELD_MAP[editingDDCategory];
+  const ul = document.getElementById('ddList');
+  ul.innerHTML = '';
+
+  (dd[editingDDCategory] || []).forEach((val, idx) => {
+    const usedCount = items.filter(it => it[field] === val).length;
+    const li = document.createElement('li');
+    li.innerHTML = `
+      <span class="dd-value">${escapeHtml(val)}<span class="used-count">(${usedCount} record${usedCount !== 1 ? 's' : ''})</span></span>
+      <span class="actions">
+        <button class="icon-btn" title="Edit" onclick="editDDValue(${idx})">✎</button>
+        <button class="icon-btn danger" title="Delete" onclick="deleteDDValue(${idx})">🗑</button>
+      </span>`;
+    ul.appendChild(li);
+  });
+};
+
+addDDValue = async function() {
+  const input = document.getElementById('ddNewValue');
+  const val = input.value.trim();
+  if (!val) { toast('Enter a value', 'error'); return; }
+
+  const dd = getDropdowns();
+  if ((dd[editingDDCategory] || []).some(v => v.toLowerCase() === val.toLowerCase())) {
+    toast('Value already exists', 'error');
+    return;
+  }
+
+  try {
+    const nextOrder = (dd[editingDDCategory] || []).length + 1;
+    const { error } = await supabaseClient
+      .from(SUPABASE_DROPDOWN_TABLE)
+      .insert([{ category: editingDDCategory, value: val, sort_order: nextOrder, is_active: true }]);
+
+    if (error) throw error;
+
+    input.value = '';
+    await loadDropdownsFromSupabase();
+    renderDDList();
+    toast(`Added "${val}" to ${editingDDCategory}`);
+  } catch (err) {
+    console.error('Supabase dropdown add error:', err);
+    toast('Could not add dropdown value in Supabase. Check console.', 'error');
+  }
+};
+
+editDDValue = async function(idx) {
+  const dd = getDropdowns();
+  const oldVal = dd[editingDDCategory][idx];
+  const newVal = prompt(`Rename "${oldVal}" to:`, oldVal);
+  if (newVal === null) return;
+
+  const trimmed = newVal.trim();
+  if (!trimmed) { toast('Value cannot be empty', 'error'); return; }
+  if (trimmed === oldVal) return;
+  if (dd[editingDDCategory].some((v, i) => i !== idx && v.toLowerCase() === trimmed.toLowerCase())) {
+    toast('That value already exists', 'error');
+    return;
+  }
+
+  const field = DROPDOWN_FIELD_MAP[editingDDCategory];
+
+  try {
+    const { error: ddError } = await supabaseClient
+      .from(SUPABASE_DROPDOWN_TABLE)
+      .update({ value: trimmed })
+      .eq('category', editingDDCategory)
+      .eq('value', oldVal);
+
+    if (ddError) throw ddError;
+
+    if (['platform', 'owner', 'status', 'severity', 'priority'].includes(field)) {
+      const { error: itemError } = await supabaseClient
+        .from(SUPABASE_TABLE)
+        .update({ [field]: trimmed })
+        .eq(field, oldVal);
+
+      if (itemError) throw itemError;
+    }
+
+    if (['owner', 'status'].includes(field)) {
+      const subtaskField = field === 'owner' ? 'owner' : 'status';
+      const { error: subtaskError } = await supabaseClient
+        .from(SUPABASE_SUBTASK_TABLE)
+        .update({ [subtaskField]: trimmed })
+        .eq(subtaskField, oldVal);
+
+      if (subtaskError) throw subtaskError;
+      await loadSubtasksFromSupabase();
+    }
+
+    await loadDropdownsFromSupabase();
+    await loadItemsFromSupabase();
+    renderDDList();
+    toast(`Renamed to "${trimmed}"`);
+  } catch (err) {
+    console.error('Supabase dropdown edit error:', err);
+    toast('Could not rename dropdown value in Supabase. Check console.', 'error');
+  }
+};
+
+deleteDDValue = async function(idx) {
+  const dd = getDropdowns();
+  const val = dd[editingDDCategory][idx];
+  const field = DROPDOWN_FIELD_MAP[editingDDCategory];
+  const items = getItems();
+  const usedCount = items.filter(it => it[field] === val).length;
+
+  if ((dd[editingDDCategory] || []).length <= 1) {
+    toast('Cannot delete the only value in this category', 'error');
+    return;
+  }
+
+  const hardDeleteDropdown = async () => {
+    const { error } = await supabaseClient
+      .from(SUPABASE_DROPDOWN_TABLE)
+      .delete()
+      .eq('category', editingDDCategory)
+      .eq('value', val);
+
+    if (error) throw error;
+  };
+
+  if (usedCount === 0) {
+    openConfirm('Delete value?', `"${val}" will be removed from ${editingDDCategory}.`, async () => {
+      try {
+        await hardDeleteDropdown();
+        await loadDropdownsFromSupabase();
+        renderDDList();
+        toast(`Deleted "${val}"`);
+      } catch (err) {
+        console.error('Supabase dropdown delete error:', err);
+        toast('Could not delete dropdown value in Supabase. Check console.', 'error');
+      }
+    });
+    return;
+  }
+
+  const replacements = dd[editingDDCategory].filter((_, i) => i !== idx);
+  openConfirmReplace(
+    'Replace value before deleting',
+    `"${val}" is used in ${usedCount} tracker item(s). Pick a replacement:`,
+    replacements,
+    async (replacement) => {
+      try {
+        if (['platform', 'owner', 'status', 'severity', 'priority'].includes(field)) {
+          const { error: itemError } = await supabaseClient
+            .from(SUPABASE_TABLE)
+            .update({ [field]: replacement })
+            .eq(field, val);
+
+          if (itemError) throw itemError;
+        }
+
+        if (['owner', 'status'].includes(field)) {
+          const subtaskField = field === 'owner' ? 'owner' : 'status';
+          const { error: subtaskError } = await supabaseClient
+            .from(SUPABASE_SUBTASK_TABLE)
+            .update({ [subtaskField]: replacement })
+            .eq(subtaskField, val);
+
+          if (subtaskError) throw subtaskError;
+          await loadSubtasksFromSupabase();
+        }
+
+        await hardDeleteDropdown();
+        await loadDropdownsFromSupabase();
+        await loadItemsFromSupabase();
+        renderDDList();
+        toast(`Replaced "${val}" with "${replacement}" and deleted old value`);
+      } catch (err) {
+        console.error('Supabase dropdown replace/delete error:', err);
+        toast('Could not replace/delete dropdown value in Supabase. Check console.', 'error');
+      }
+    }
+  );
+};
+
+const previousShowAppForSupabaseDropdowns = showApp;
+showApp = function() {
+  previousShowAppForSupabaseDropdowns();
+  loadDropdownsFromSupabase();
+};
+
 
 /* ========== INIT ========== */
 function refreshAll() {
