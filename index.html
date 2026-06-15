@@ -2339,16 +2339,13 @@ async function loadItemsFromSupabase() {
 function populateDropdownsFromSupabaseItems() {
   const dd = getDropdowns();
 
-  // Platform and Owner are now controlled by their own Supabase master tables.
-  // Do not auto-add them from tracker_items, otherwise old item values can reappear.
-  SUPABASE_ITEMS_CACHE.forEach(it => {
-    [['Status', it.status], ['Priority', it.priority], ['Severity', it.severity]].forEach(([cat, val]) => {
-      if (val && dd[cat] && !dd[cat].some(x => x.toLowerCase() === val.toLowerCase())) dd[cat].push(val);
-    });
-  });
-
-  if (typeof SUPABASE_PLATFORM_CACHE !== 'undefined' && SUPABASE_PLATFORM_CACHE.length) dd.Platform = SUPABASE_PLATFORM_CACHE;
-  if (typeof SUPABASE_OWNER_CACHE !== 'undefined' && SUPABASE_OWNER_CACHE.length) dd.Owner = SUPABASE_OWNER_CACHE;
+  // Dropdown master values are now controlled by their own Supabase tables.
+  // Do not auto-add dropdown values from tracker_items, otherwise old item values can reappear.
+  if (typeof SUPABASE_PLATFORM_CACHE !== 'undefined') dd.Platform = SUPABASE_PLATFORM_CACHE || [];
+  if (typeof SUPABASE_OWNER_CACHE !== 'undefined') dd.Owner = SUPABASE_OWNER_CACHE || [];
+  if (typeof SUPABASE_STATUS_CACHE !== 'undefined') dd.Status = SUPABASE_STATUS_CACHE || [];
+  if (typeof SUPABASE_SEVERITY_CACHE !== 'undefined') dd.Severity = SUPABASE_SEVERITY_CACHE || [];
+  if (typeof SUPABASE_PRIORITY_CACHE !== 'undefined') dd.Priority = SUPABASE_PRIORITY_CACHE || [];
 
   setDropdowns(dd);
   populateAllDropdowns();
@@ -3389,6 +3386,289 @@ showApp = function() {
 };
 
 
+
+
+/* ========== SUPABASE STATUS / SEVERITY / PRIORITY DROPDOWN INTEGRATION ========== */
+const SUPABASE_STATUS_TABLE = 'tracker_statuses';
+const SUPABASE_SEVERITY_TABLE = 'tracker_severities';
+const SUPABASE_PRIORITY_TABLE = 'tracker_priorities';
+
+let SUPABASE_STATUS_CACHE = [];
+let SUPABASE_SEVERITY_CACHE = [];
+let SUPABASE_PRIORITY_CACHE = [];
+
+function masterDropdownConfig(cat) {
+  if (cat === 'Status') {
+    return {
+      table: SUPABASE_STATUS_TABLE,
+      field: 'status',
+      cache: () => SUPABASE_STATUS_CACHE,
+      setCache: (v) => { SUPABASE_STATUS_CACHE = v; },
+      load: loadStatusesFromSupabase,
+      label: 'status'
+    };
+  }
+  if (cat === 'Severity') {
+    return {
+      table: SUPABASE_SEVERITY_TABLE,
+      field: 'severity',
+      cache: () => SUPABASE_SEVERITY_CACHE,
+      setCache: (v) => { SUPABASE_SEVERITY_CACHE = v; },
+      load: loadSeveritiesFromSupabase,
+      label: 'severity'
+    };
+  }
+  if (cat === 'Priority') {
+    return {
+      table: SUPABASE_PRIORITY_TABLE,
+      field: 'priority',
+      cache: () => SUPABASE_PRIORITY_CACHE,
+      setCache: (v) => { SUPABASE_PRIORITY_CACHE = v; },
+      load: loadPrioritiesFromSupabase,
+      label: 'priority'
+    };
+  }
+  return null;
+}
+
+async function loadMasterDropdownFromSupabase(cat) {
+  const cfg = masterDropdownConfig(cat);
+  if (!cfg) return [];
+
+  try {
+    const { data, error } = await supabaseClient
+      .from(cfg.table)
+      .select('id,name,sort_order')
+      .order('sort_order', { ascending: true })
+      .order('name', { ascending: true });
+
+    if (error) throw error;
+
+    const values = (data || [])
+      .map(r => (r.name || '').trim())
+      .filter(Boolean);
+
+    cfg.setCache(values);
+
+    const dd = getDropdowns();
+    dd[cat] = values;
+    setDropdowns(dd);
+
+    populateAllDropdowns();
+    if (editingDDCategory === cat) renderDDList();
+    renderTable();
+
+    return values;
+  } catch (err) {
+    console.error(`Supabase ${cfg.label} load error:`, err);
+    toast(`Could not load ${cfg.label} values from Supabase. Check console.`, 'error');
+    return cfg.cache();
+  }
+}
+
+async function loadStatusesFromSupabase() {
+  return loadMasterDropdownFromSupabase('Status');
+}
+
+async function loadSeveritiesFromSupabase() {
+  return loadMasterDropdownFromSupabase('Severity');
+}
+
+async function loadPrioritiesFromSupabase() {
+  return loadMasterDropdownFromSupabase('Priority');
+}
+
+async function addMasterDropdownToSupabase(cat, value) {
+  const cfg = masterDropdownConfig(cat);
+  const nextSortOrder = cfg.cache().length + 1;
+
+  const { error } = await supabaseClient
+    .from(cfg.table)
+    .insert([{ name: value, sort_order: nextSortOrder }]);
+
+  if (error) throw error;
+}
+
+async function renameMasterDropdownInSupabase(cat, oldValue, newValue) {
+  const cfg = masterDropdownConfig(cat);
+
+  const { error: masterError } = await supabaseClient
+    .from(cfg.table)
+    .update({ name: newValue })
+    .eq('name', oldValue);
+  if (masterError) throw masterError;
+
+  const { error: itemError } = await supabaseClient
+    .from(SUPABASE_TABLE)
+    .update({ [cfg.field]: newValue })
+    .eq(cfg.field, oldValue);
+  if (itemError) throw itemError;
+
+  // Subtasks also have status, so keep them aligned when status is renamed.
+  if (cat === 'Status') {
+    const { error: subtaskError } = await supabaseClient
+      .from(SUPABASE_SUBTASK_TABLE)
+      .update({ status: newValue })
+      .eq('status', oldValue);
+    if (subtaskError) throw subtaskError;
+  }
+}
+
+async function deleteMasterDropdownFromSupabase(cat, value, replacement) {
+  const cfg = masterDropdownConfig(cat);
+
+  if (replacement) {
+    const { error: itemError } = await supabaseClient
+      .from(SUPABASE_TABLE)
+      .update({ [cfg.field]: replacement })
+      .eq(cfg.field, value);
+    if (itemError) throw itemError;
+
+    if (cat === 'Status') {
+      const { error: subtaskError } = await supabaseClient
+        .from(SUPABASE_SUBTASK_TABLE)
+        .update({ status: replacement })
+        .eq('status', value);
+      if (subtaskError) throw subtaskError;
+    }
+  }
+
+  const { error } = await supabaseClient
+    .from(cfg.table)
+    .delete()
+    .eq('name', value);
+  if (error) throw error;
+}
+
+const _masterPreviousSwitchDDTab = switchDDTab;
+switchDDTab = async function(cat) {
+  const cfg = masterDropdownConfig(cat);
+  if (!cfg) return _masterPreviousSwitchDDTab(cat);
+
+  editingDDCategory = cat;
+  document.querySelectorAll('.dd-tab').forEach(t => t.classList.toggle('active', t.dataset.cat === cat));
+  await cfg.load();
+  renderDDList();
+};
+
+const _masterPreviousAddDDValue = addDDValue;
+addDDValue = async function() {
+  const cfg = masterDropdownConfig(editingDDCategory);
+  if (!cfg) return _masterPreviousAddDDValue();
+
+  const input = document.getElementById('ddNewValue');
+  const val = input.value.trim();
+  if (!val) { toast('Enter a value', 'error'); return; }
+
+  if (cfg.cache().some(v => v.toLowerCase() === val.toLowerCase())) {
+    toast(`${editingDDCategory} already exists`, 'error');
+    return;
+  }
+
+  try {
+    await addMasterDropdownToSupabase(editingDDCategory, val);
+    input.value = '';
+    await cfg.load();
+    toast(`Added ${cfg.label} "${val}"`);
+  } catch (err) {
+    console.error(`Supabase add ${cfg.label} error:`, err);
+    toast(`Could not add ${cfg.label} in Supabase. Check console.`, 'error');
+  }
+};
+
+const _masterPreviousEditDDValue = editDDValue;
+editDDValue = async function(idx) {
+  const cfg = masterDropdownConfig(editingDDCategory);
+  if (!cfg) return _masterPreviousEditDDValue(idx);
+
+  const oldVal = cfg.cache()[idx];
+  if (!oldVal) return;
+
+  const newVal = prompt(`Rename "${oldVal}" to:`, oldVal);
+  if (newVal === null) return;
+
+  const trimmed = newVal.trim();
+  if (!trimmed) { toast(`${editingDDCategory} cannot be empty`, 'error'); return; }
+  if (trimmed === oldVal) return;
+  if (cfg.cache().some((v, i) => i !== idx && v.toLowerCase() === trimmed.toLowerCase())) {
+    toast(`That ${cfg.label} already exists`, 'error');
+    return;
+  }
+
+  try {
+    await renameMasterDropdownInSupabase(editingDDCategory, oldVal, trimmed);
+    await cfg.load();
+    await loadItemsFromSupabase();
+    if (editingDDCategory === 'Status') await loadSubtasksFromSupabase();
+    toast(`Renamed ${cfg.label} to "${trimmed}"`);
+  } catch (err) {
+    console.error(`Supabase rename ${cfg.label} error:`, err);
+    toast(`Could not rename ${cfg.label} in Supabase. Check console.`, 'error');
+  }
+};
+
+const _masterPreviousDeleteDDValue = deleteDDValue;
+deleteDDValue = function(idx) {
+  const cfg = masterDropdownConfig(editingDDCategory);
+  if (!cfg) return _masterPreviousDeleteDDValue(idx);
+
+  const val = cfg.cache()[idx];
+  if (!val) return;
+
+  if (cfg.cache().length <= 1) {
+    toast(`Cannot delete the only ${cfg.label}`, 'error');
+    return;
+  }
+
+  const items = getItems();
+  let usedCount = items.filter(it => it[cfg.field] === val).length;
+  if (editingDDCategory === 'Status') {
+    usedCount += getSubtasks().filter(st => st.status === val).length;
+  }
+
+  if (usedCount === 0) {
+    openConfirm(`Delete ${cfg.label}?`, `"${val}" will be removed from Supabase.`, async () => {
+      try {
+        await deleteMasterDropdownFromSupabase(editingDDCategory, val, null);
+        await cfg.load();
+        toast(`Deleted ${cfg.label} "${val}"`);
+      } catch (err) {
+        console.error(`Supabase delete ${cfg.label} error:`, err);
+        toast(`Could not delete ${cfg.label} in Supabase. Check console.`, 'error');
+      }
+    });
+    return;
+  }
+
+  const replacements = cfg.cache().filter((_, i) => i !== idx);
+  openConfirmReplace(
+    `Replace ${cfg.label} before deleting`,
+    `"${val}" is used in ${usedCount} record(s). Pick a replacement:`,
+    replacements,
+    async (replacement) => {
+      try {
+        await deleteMasterDropdownFromSupabase(editingDDCategory, val, replacement);
+        await cfg.load();
+        await loadItemsFromSupabase();
+        if (editingDDCategory === 'Status') await loadSubtasksFromSupabase();
+        toast(`Replaced "${val}" with "${replacement}" and deleted ${cfg.label}`);
+      } catch (err) {
+        console.error(`Supabase replace/delete ${cfg.label} error:`, err);
+        toast(`Could not delete ${cfg.label} in Supabase. Check console.`, 'error');
+      }
+    }
+  );
+};
+
+const _masterPreviousShowApp = showApp;
+showApp = function() {
+  _masterPreviousShowApp();
+  loadStatusesFromSupabase();
+  loadSeveritiesFromSupabase();
+  loadPrioritiesFromSupabase();
+};
+
+
 /* ========== INIT ========== */
 function refreshAll() {
   populateAllDropdowns();
@@ -3408,6 +3688,9 @@ async function initApp() {
   await loadUsersFromSupabase();
   await loadPlatformsFromSupabase();
   await loadOwnersFromSupabase();
+  await loadStatusesFromSupabase();
+  await loadSeveritiesFromSupabase();
+  await loadPrioritiesFromSupabase();
   if (await restoreSession()) showApp();
 }
 initApp();
