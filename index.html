@@ -1184,7 +1184,10 @@ function renderDDList() {
   const ul = document.getElementById('ddList');
   ul.innerHTML = '';
   (dd[editingDDCategory] || []).forEach((val, idx) => {
-    const usedCount = items.filter(it => it[field] === val).length;
+    let usedCount = items.filter(it => it[field] === val).length;
+    if (editingDDCategory === 'Owner' && typeof getSubtasks === 'function') {
+      usedCount += getSubtasks().filter(st => st.owner === val).length;
+    }
     const li = document.createElement('li');
     li.innerHTML = `
       <span class="dd-value">${escapeHtml(val)}<span class="used-count">(${usedCount} record${usedCount !== 1 ? 's' : ''})</span></span>
@@ -2329,6 +2332,8 @@ async function loadItemsFromSupabase() {
     if (error) throw error;
     SUPABASE_ITEMS_CACHE = (data || []).map(mapFromSupabase);
     populateDropdownsFromSupabaseItems();
+    if (typeof loadPlatformsFromSupabase === 'function') await loadPlatformsFromSupabase();
+    if (typeof loadOwnersFromSupabase === 'function') await loadOwnersFromSupabase();
     renderTable();
   } catch (err) {
     console.error('Supabase load error:', err);
@@ -2338,11 +2343,21 @@ async function loadItemsFromSupabase() {
 
 function populateDropdownsFromSupabaseItems() {
   const dd = getDropdowns();
+
+  // Platform and Owner now have their own Supabase master tables:
+  //   tracker_platforms
+  //   tracker_owners
+  // Do not auto-add Platform/Owner values from tracker_items here.
+  // Otherwise old item data or browser localStorage can pollute the dropdown manager.
   SUPABASE_ITEMS_CACHE.forEach(it => {
-    [['Platform', it.platform], ['Owner', it.owner], ['Status', it.status], ['Priority', it.priority]].forEach(([cat, val]) => {
+    [['Status', it.status], ['Priority', it.priority], ['Severity', it.severity]].forEach(([cat, val]) => {
       if (val && dd[cat] && !dd[cat].some(x => x.toLowerCase() === val.toLowerCase())) dd[cat].push(val);
     });
   });
+
+  if (SUPABASE_PLATFORM_CACHE && SUPABASE_PLATFORM_CACHE.length) dd.Platform = SUPABASE_PLATFORM_CACHE;
+  if (SUPABASE_OWNER_CACHE && SUPABASE_OWNER_CACHE.length) dd.Owner = SUPABASE_OWNER_CACHE;
+
   setDropdowns(dd);
   populateAllDropdowns();
 }
