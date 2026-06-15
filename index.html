@@ -3180,6 +3180,212 @@ showApp = function() {
 };
 
 
+
+
+/* ========== SUPABASE OWNER DROPDOWN INTEGRATION ========== */
+const SUPABASE_OWNER_TABLE = 'tracker_owners';
+let SUPABASE_OWNER_CACHE = [];
+
+async function loadOwnersFromSupabase() {
+  try {
+    const { data, error } = await supabaseClient
+      .from(SUPABASE_OWNER_TABLE)
+      .select('id,name,sort_order')
+      .order('sort_order', { ascending: true })
+      .order('name', { ascending: true });
+
+    if (error) throw error;
+
+    SUPABASE_OWNER_CACHE = (data || [])
+      .map(r => (r.name || '').trim())
+      .filter(Boolean);
+
+    const dd = getDropdowns();
+    dd.Owner = SUPABASE_OWNER_CACHE;
+    setDropdowns(dd);
+
+    populateAllDropdowns();
+    if (editingDDCategory === 'Owner') renderDDList();
+    renderTable();
+  } catch (err) {
+    console.error('Supabase owner load error:', err);
+    toast('Could not load owners from Supabase. Check console.', 'error');
+  }
+}
+
+async function addOwnerToSupabase(value) {
+  const nextSortOrder = SUPABASE_OWNER_CACHE.length + 1;
+  const { error } = await supabaseClient
+    .from(SUPABASE_OWNER_TABLE)
+    .insert([{ name: value, sort_order: nextSortOrder }]);
+  if (error) throw error;
+}
+
+async function renameOwnerInSupabase(oldValue, newValue) {
+  const { error: ownerError } = await supabaseClient
+    .from(SUPABASE_OWNER_TABLE)
+    .update({ name: newValue })
+    .eq('name', oldValue);
+  if (ownerError) throw ownerError;
+
+  const { error: itemError } = await supabaseClient
+    .from(SUPABASE_TABLE)
+    .update({ owner: newValue })
+    .eq('owner', oldValue);
+  if (itemError) throw itemError;
+
+  const { error: subtaskError } = await supabaseClient
+    .from(SUPABASE_SUBTASK_TABLE)
+    .update({ owner: newValue })
+    .eq('owner', oldValue);
+  if (subtaskError) throw subtaskError;
+}
+
+async function deleteOwnerFromSupabase(value, replacement) {
+  if (replacement) {
+    const { error: itemError } = await supabaseClient
+      .from(SUPABASE_TABLE)
+      .update({ owner: replacement })
+      .eq('owner', value);
+    if (itemError) throw itemError;
+
+    const { error: subtaskError } = await supabaseClient
+      .from(SUPABASE_SUBTASK_TABLE)
+      .update({ owner: replacement })
+      .eq('owner', value);
+    if (subtaskError) throw subtaskError;
+  }
+
+  const { error } = await supabaseClient
+    .from(SUPABASE_OWNER_TABLE)
+    .delete()
+    .eq('name', value);
+  if (error) throw error;
+}
+
+const _ownerPreviousSwitchDDTab = switchDDTab;
+switchDDTab = async function(cat) {
+  editingDDCategory = cat;
+  document.querySelectorAll('.dd-tab').forEach(t => t.classList.toggle('active', t.dataset.cat === cat));
+  if (cat === 'Platform') await loadPlatformsFromSupabase();
+  if (cat === 'Owner') await loadOwnersFromSupabase();
+  renderDDList();
+};
+
+const _ownerPreviousAddDDValue = addDDValue;
+addDDValue = async function() {
+  if (editingDDCategory !== 'Owner') return _ownerPreviousAddDDValue();
+
+  const input = document.getElementById('ddNewValue');
+  const val = input.value.trim();
+  if (!val) { toast('Enter a value', 'error'); return; }
+
+  const dd = getDropdowns();
+  if ((dd.Owner || []).some(v => v.toLowerCase() === val.toLowerCase())) {
+    toast('Owner already exists', 'error');
+    return;
+  }
+
+  try {
+    await addOwnerToSupabase(val);
+    input.value = '';
+    await loadOwnersFromSupabase();
+    toast(`Added owner "${val}"`);
+  } catch (err) {
+    console.error('Supabase add owner error:', err);
+    toast('Could not add owner in Supabase. Check console.', 'error');
+  }
+};
+
+const _ownerPreviousEditDDValue = editDDValue;
+editDDValue = async function(idx) {
+  if (editingDDCategory !== 'Owner') return _ownerPreviousEditDDValue(idx);
+
+  const dd = getDropdowns();
+  const oldVal = (dd.Owner || [])[idx];
+  if (!oldVal) return;
+
+  const newVal = prompt(`Rename "${oldVal}" to:`, oldVal);
+  if (newVal === null) return;
+
+  const trimmed = newVal.trim();
+  if (!trimmed) { toast('Owner cannot be empty', 'error'); return; }
+  if (trimmed === oldVal) return;
+  if ((dd.Owner || []).some((v, i) => i !== idx && v.toLowerCase() === trimmed.toLowerCase())) {
+    toast('That owner already exists', 'error');
+    return;
+  }
+
+  try {
+    await renameOwnerInSupabase(oldVal, trimmed);
+    await loadOwnersFromSupabase();
+    await loadItemsFromSupabase();
+    await loadSubtasksFromSupabase();
+    toast(`Renamed owner to "${trimmed}"`);
+  } catch (err) {
+    console.error('Supabase rename owner error:', err);
+    toast('Could not rename owner in Supabase. Check console.', 'error');
+  }
+};
+
+const _ownerPreviousDeleteDDValue = deleteDDValue;
+deleteDDValue = function(idx) {
+  if (editingDDCategory !== 'Owner') return _ownerPreviousDeleteDDValue(idx);
+
+  const dd = getDropdowns();
+  const val = (dd.Owner || [])[idx];
+  if (!val) return;
+
+  if ((dd.Owner || []).length <= 1) {
+    toast('Cannot delete the only owner', 'error');
+    return;
+  }
+
+  const items = getItems();
+  const subtasks = getSubtasks();
+  const usedCount = items.filter(it => it.owner === val).length + subtasks.filter(st => st.owner === val).length;
+
+  if (usedCount === 0) {
+    openConfirm('Delete owner?', `"${val}" will be removed from Supabase.`, async () => {
+      try {
+        await deleteOwnerFromSupabase(val, null);
+        await loadOwnersFromSupabase();
+        toast(`Deleted owner "${val}"`);
+      } catch (err) {
+        console.error('Supabase delete owner error:', err);
+        toast('Could not delete owner in Supabase. Check console.', 'error');
+      }
+    });
+    return;
+  }
+
+  const replacements = (dd.Owner || []).filter((_, i) => i !== idx);
+  openConfirmReplace(
+    'Replace owner before deleting',
+    `"${val}" is used in ${usedCount} record(s). Pick a replacement:`,
+    replacements,
+    async (replacement) => {
+      try {
+        await deleteOwnerFromSupabase(val, replacement);
+        await loadOwnersFromSupabase();
+        await loadItemsFromSupabase();
+        await loadSubtasksFromSupabase();
+        toast(`Replaced "${val}" with "${replacement}" and deleted owner`);
+      } catch (err) {
+        console.error('Supabase replace/delete owner error:', err);
+        toast('Could not delete owner in Supabase. Check console.', 'error');
+      }
+    }
+  );
+};
+
+const _ownerPreviousShowApp = showApp;
+showApp = function() {
+  _ownerPreviousShowApp();
+  loadOwnersFromSupabase();
+};
+
+
 /* ========== INIT ========== */
 function refreshAll() {
   populateAllDropdowns();
@@ -3198,6 +3404,7 @@ async function initApp() {
   bindEvents();
   await loadUsersFromSupabase();
   await loadPlatformsFromSupabase();
+  await loadOwnersFromSupabase();
   if (await restoreSession()) showApp();
 }
 initApp();
